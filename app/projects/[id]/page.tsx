@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IngestButton } from "@/components/ingest-button";
 import { ApproveCheckpointButton } from "@/components/approve-checkpoint-button";
 import { TranscribeButton } from "@/components/transcribe-button";
+import { SelectContentButton } from "@/components/select-content-button";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,10 @@ export default async function ProjectPage({
         include: { transcript: true },
       },
       checkpoints: { orderBy: { createdAt: "asc" } },
+      selections: {
+        orderBy: { order: "asc" },
+        include: { mediaAsset: true },
+      },
     },
   });
 
@@ -45,6 +50,14 @@ export default async function ProjectPage({
   const transcriptionCheckpoint = project.checkpoints.find(
     (c) => c.stage === "TRANSCRIPTION",
   );
+  const selectionCheckpoint = project.checkpoints.find(
+    (c) => c.stage === "CONTENT_SELECTION",
+  );
+  const selectedDuration =
+    Math.round(
+      project.selections.reduce((sum, s) => sum + (s.endSec - s.startSec), 0) *
+        10,
+    ) / 10;
 
   // Silent B-roll has no audio stream, so there is nothing to transcribe.
   const transcribable = project.mediaAssets.filter(
@@ -151,6 +164,69 @@ export default async function ProjectPage({
                   />
                 )}
               </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {transcriptionCheckpoint?.approved && (
+        <Card className="mb-8">
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Content selection</CardTitle>
+            <SelectContentButton
+              projectId={project.id}
+              hasSelections={project.selections.length > 0}
+            />
+          </CardHeader>
+          <CardContent>
+            {project.selections.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Pick the moments worth cutting, based on the transcript and the
+                brief.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm">
+                  <span className="font-medium">
+                    {project.selections.length}
+                  </span>{" "}
+                  moments · {selectedDuration}s total
+                </p>
+                <ol className="mt-3 space-y-2">
+                  {project.selections.map((selection) => (
+                    <li
+                      key={selection.id}
+                      className="rounded-lg border px-3 py-2 text-sm"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {selection.mediaAsset.filePath.split("/").pop()} ·{" "}
+                          {selection.startSec}–{selection.endSec}s
+                        </span>
+                        <Badge variant="outline">
+                          {selection.score?.toFixed(2) ?? "—"}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {selection.reason}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+                {selectionCheckpoint && (
+                  <div className="pt-3">
+                    {selectionCheckpoint.approved ? (
+                      <Badge variant="secondary">Selection approved</Badge>
+                    ) : (
+                      <ApproveCheckpointButton
+                        checkpointId={selectionCheckpoint.id}
+                        projectId={project.id}
+                        label="Approve selection"
+                      />
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

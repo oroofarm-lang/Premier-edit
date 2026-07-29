@@ -6,6 +6,7 @@ import { stat } from "node:fs/promises";
 import { prisma } from "@/lib/db";
 import { runIngest } from "@/lib/ingest/run";
 import { runTranscription } from "@/lib/transcription/run";
+import { runContentSelection } from "@/lib/selection/run";
 import type { OutputProfile } from "@/lib/generated/prisma/enums";
 
 const OUTPUT_PROFILES = ["REEL_SHORT", "SOCIAL_POST", "YOUTUBE_LONG"] as const;
@@ -64,6 +65,11 @@ export async function ingestProject(projectId: string): Promise<void> {
 
 export async function transcribeProject(projectId: string): Promise<void> {
   await runTranscription(projectId);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function selectContent(projectId: string): Promise<void> {
+  await runContentSelection(projectId);
   revalidatePath(`/projects/${projectId}`);
 }
 
