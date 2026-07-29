@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 export function ApproveCheckpointButton({
   checkpointId,
   projectId,
+  label = "Approve ingest",
 }: {
   checkpointId: string;
   projectId: string;
+  label?: string;
 }) {
   const [pending, startTransition] = useTransition();
 
@@ -21,7 +23,7 @@ export function ApproveCheckpointButton({
         startTransition(() => approveCheckpoint(checkpointId, projectId))
       }
     >
-      {pending ? "Approving..." : "Approve ingest"}
+      {pending ? "Approving..." : label}
     </Button>
   );
 }

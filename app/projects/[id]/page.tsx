@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IngestButton } from "@/components/ingest-button";
 import { ApproveCheckpointButton } from "@/components/approve-checkpoint-button";
+import { TranscribeButton } from "@/components/transcribe-button";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,10 @@ export default async function ProjectPage({
   const project = await prisma.project.findUnique({
     where: { id: params.id },
     include: {
-      mediaAssets: { orderBy: { filePath: "asc" } },
+      mediaAssets: {
+        orderBy: { filePath: "asc" },
+        include: { transcript: true },
+      },
       checkpoints: { orderBy: { createdAt: "asc" } },
     },
   });
@@ -38,6 +42,16 @@ export default async function ProjectPage({
   const videos = project.mediaAssets.filter((a) => a.kind === "VIDEO");
   const audio = project.mediaAssets.filter((a) => a.kind === "AUDIO");
   const ingestCheckpoint = project.checkpoints.find((c) => c.stage === "INGEST");
+  const transcriptionCheckpoint = project.checkpoints.find(
+    (c) => c.stage === "TRANSCRIPTION",
+  );
+
+  // Silent B-roll has no audio stream, so there is nothing to transcribe.
+  const transcribable = project.mediaAssets.filter(
+    (a) => a.kind === "AUDIO" || a.sampleRate !== null,
+  );
+  const transcribed = transcribable.filter((a) => a.transcript !== null);
+  const pendingTranscription = transcribable.length - transcribed.length;
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
@@ -105,6 +119,66 @@ export default async function ProjectPage({
           )}
         </CardContent>
       </Card>
+
+      {ingestCheckpoint?.approved && (
+        <Card className="mb-8">
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Transcription</CardTitle>
+            <TranscribeButton
+              projectId={project.id}
+              pendingCount={pendingTranscription}
+            />
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              {transcribed.length} of {transcribable.length} clips transcribed
+              (Hebrew, running locally — nothing is uploaded).
+            </p>
+            {pendingTranscription > 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                The first run downloads the model (~3GB) and takes a few minutes.
+              </p>
+            )}
+            {transcriptionCheckpoint && transcribed.length > 0 && (
+              <div className="pt-3">
+                {transcriptionCheckpoint.approved ? (
+                  <Badge variant="secondary">Transcription approved</Badge>
+                ) : (
+                  <ApproveCheckpointButton
+                    checkpointId={transcriptionCheckpoint.id}
+                    projectId={project.id}
+                    label="Approve transcription"
+                  />
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {transcribed.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-sm font-medium text-muted-foreground">
+            Transcripts
+          </h2>
+          <div className="space-y-3">
+            {transcribed.map((asset) => (
+              <Card key={asset.id}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="font-mono text-xs font-normal text-muted-foreground">
+                    {asset.filePath.split("/").pop()}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p dir="auto" className="text-sm leading-relaxed">
+                    {asset.transcript?.text}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
 
       {project.mediaAssets.length > 0 && (
         <section>

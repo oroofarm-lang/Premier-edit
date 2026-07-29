@@ -46,3 +46,9 @@ next-env.d.ts
 
 # Claude Code local settings (personal, not shared with the team)
 /.claude/settings.local.json
+
+# Python venv for local transcription (recreate with scripts/setup-transcription.sh)
+/.venv
+
+# Downloaded Whisper model weights — large, fetched on first run
+/models
