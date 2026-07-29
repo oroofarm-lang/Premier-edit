@@ -1,0 +1,161 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { prisma } from "@/lib/db";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { IngestButton } from "@/components/ingest-button";
+import { ApproveCheckpointButton } from "@/components/approve-checkpoint-button";
+
+export const dynamic = "force-dynamic";
+
+function formatDuration(seconds: number | null) {
+  if (seconds === null) return "—";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.round(seconds % 60);
+  return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+function formatResolution(width: number | null, height: number | null) {
+  if (!width || !height) return null;
+  return `${width}×${height}`;
+}
+
+export default async function ProjectPage({
+  params,
+}: {
+  params: { id: string };
+}) {
+  const project = await prisma.project.findUnique({
+    where: { id: params.id },
+    include: {
+      mediaAssets: { orderBy: { filePath: "asc" } },
+      checkpoints: { orderBy: { createdAt: "asc" } },
+    },
+  });
+
+  if (!project) notFound();
+
+  const videos = project.mediaAssets.filter((a) => a.kind === "VIDEO");
+  const audio = project.mediaAssets.filter((a) => a.kind === "AUDIO");
+  const ingestCheckpoint = project.checkpoints.find((c) => c.stage === "INGEST");
+
+  return (
+    <main className="mx-auto max-w-4xl px-6 py-12">
+      <Link
+        href="/"
+        className="text-sm text-muted-foreground hover:text-foreground"
+      >
+        ← All projects
+      </Link>
+
+      <header className="mb-8 mt-4">
+        <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
+        <dl className="mt-3 space-y-1 text-sm text-muted-foreground">
+          <div>
+            <dt className="inline font-medium">Footage: </dt>
+            <dd className="inline font-mono text-xs">{project.footageFolder}</dd>
+          </div>
+          {project.audioFolder && (
+            <div>
+              <dt className="inline font-medium">Audio: </dt>
+              <dd className="inline font-mono text-xs">{project.audioFolder}</dd>
+            </div>
+          )}
+          {project.brief && (
+            <div>
+              <dt className="inline font-medium">Brief: </dt>
+              <dd className="inline">{project.brief}</dd>
+            </div>
+          )}
+        </dl>
+      </header>
+
+      <Card className="mb-8">
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base">Ingest</CardTitle>
+          <IngestButton
+            projectId={project.id}
+            hasAssets={project.mediaAssets.length > 0}
+          />
+        </CardHeader>
+        <CardContent>
+          {project.mediaAssets.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Nothing ingested yet. Run ingest to scan the folders above.
+            </p>
+          ) : (
+            <div className="space-y-1 text-sm">
+              <p>
+                <span className="font-medium">{videos.length}</span> video ·{" "}
+                <span className="font-medium">{audio.length}</span> audio
+              </p>
+              {ingestCheckpoint && (
+                <div className="flex items-center gap-3 pt-2">
+                  {ingestCheckpoint.approved ? (
+                    <Badge variant="secondary">Ingest approved</Badge>
+                  ) : (
+                    <ApproveCheckpointButton
+                      checkpointId={ingestCheckpoint.id}
+                      projectId={project.id}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {project.mediaAssets.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-sm font-medium text-muted-foreground">
+            Media assets
+          </h2>
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/50 text-left text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">File</th>
+                  <th className="px-3 py-2 font-medium">Kind</th>
+                  <th className="px-3 py-2 font-medium">Duration</th>
+                  <th className="px-3 py-2 font-medium">Format</th>
+                </tr>
+              </thead>
+              <tbody>
+                {project.mediaAssets.map((asset) => {
+                  const resolution = formatResolution(asset.width, asset.height);
+                  return (
+                    <tr key={asset.id} className="border-b last:border-0">
+                      <td
+                        className="max-w-md truncate px-3 py-2 font-mono text-xs"
+                        title={asset.filePath}
+                      >
+                        {asset.filePath.split("/").pop()}
+                      </td>
+                      <td className="px-3 py-2">
+                        <Badge variant="outline">{asset.kind}</Badge>
+                      </td>
+                      <td className="px-3 py-2 tabular-nums">
+                        {formatDuration(asset.durationSec)}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-muted-foreground">
+                        {[
+                          asset.codec,
+                          resolution,
+                          asset.fps ? `${asset.fps}fps` : null,
+                          asset.sampleRate ? `${asset.sampleRate}Hz` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </main>
+  );
+}

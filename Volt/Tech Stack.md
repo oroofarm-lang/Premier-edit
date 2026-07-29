@@ -25,7 +25,7 @@ Part of [[Premier Edit]].
 
 ## Prisma specifics
 
-- Import the client from `@/lib/generated/prisma`, **not** `@prisma/client` — the schema uses the newer `prisma-client` generator with a custom output path.
+- Import `PrismaClient` from `@/lib/generated/prisma/client` (enums from `.../enums`), **not** `@prisma/client` — the schema uses the newer `prisma-client` generator with a custom output path, and there is no barrel `index.ts`, so the bare folder path fails to resolve.
 - Config lives in `prisma.config.ts`, not just `.env` — Prisma 6+ no longer auto-loads `.env` on its own.
 - Schema models the 8 entities from the PRD's data model section: `Project`, `MediaAsset`, `Transcript`, `Selection`, `Timeline`, `EditVersion`, `StylePreference`, `ApprovalCheckpoint`.
 
