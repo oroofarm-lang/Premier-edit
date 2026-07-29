@@ -1,0 +1,138 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum OutputProfile {
+  REEL_SHORT
+  SOCIAL_POST
+  YOUTUBE_LONG
+}
+
+enum PipelineStage {
+  INGEST
+  TRANSCRIPTION
+  CONTENT_SELECTION
+  CUT
+  AUDIO
+  CAPTIONS
+  ASSEMBLY
+  QC
+}
+
+enum AssetKind {
+  VIDEO
+  AUDIO
+}
+
+model Project {
+  id             String    @id @default(cuid())
+  name           String
+  outputProfile  OutputProfile
+  brief          String?
+  footageFolder  String
+  audioFolder    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  mediaAssets    MediaAsset[]
+  selections     Selection[]
+  timelines      Timeline[]
+  editVersions   EditVersion[]
+  checkpoints    ApprovalCheckpoint[]
+}
+
+model MediaAsset {
+  id            String     @id @default(cuid())
+  project       Project    @relation(fields: [projectId], references: [id])
+  projectId     String
+  kind          AssetKind
+  filePath      String
+  durationSec   Float?
+  width         Int?
+  height        Int?
+  fps           Float?
+  codec         String?
+  sampleRate    Int?
+  channels      Int?
+  createdAt     DateTime   @default(now())
+
+  transcript    Transcript?
+  selections    Selection[]
+}
+
+model Transcript {
+  id           String      @id @default(cuid())
+  mediaAsset   MediaAsset  @relation(fields: [mediaAssetId], references: [id])
+  mediaAssetId String      @unique
+  language     String      @default("he")
+  engine       String
+  text         String
+  segmentsJson String
+  createdAt    DateTime    @default(now())
+}
+
+model Selection {
+  id           String      @id @default(cuid())
+  project      Project     @relation(fields: [projectId], references: [id])
+  projectId    String
+  mediaAsset   MediaAsset  @relation(fields: [mediaAssetId], references: [id])
+  mediaAssetId String
+  startSec     Float
+  endSec       Float
+  order        Int
+  score        Float?
+  reason       String?
+  createdAt    DateTime    @default(now())
+}
+
+model Timeline {
+  id           String      @id @default(cuid())
+  project      Project     @relation(fields: [projectId], references: [id])
+  projectId    String
+  format       String      @default("fcp7-xml")
+  filePath     String
+  createdAt    DateTime    @default(now())
+
+  editVersions EditVersion[]
+}
+
+model EditVersion {
+  id           String    @id @default(cuid())
+  project      Project   @relation(fields: [projectId], references: [id])
+  projectId    String
+  timeline     Timeline? @relation(fields: [timelineId], references: [id])
+  timelineId   String?
+  versionNum   Int
+  note         String?
+  createdAt    DateTime  @default(now())
+}
+
+model StylePreference {
+  id        String   @id @default(cuid())
+  key       String
+  value     String
+  scope     String   @default("global")
+  createdAt DateTime @default(now())
+
+  @@unique([key, scope])
+}
+
+model ApprovalCheckpoint {
+  id         String        @id @default(cuid())
+  project    Project       @relation(fields: [projectId], references: [id])
+  projectId  String
+  stage      PipelineStage
+  approved   Boolean       @default(false)
+  note       String?
+  createdAt  DateTime      @default(now())
+  approvedAt DateTime?
+}
