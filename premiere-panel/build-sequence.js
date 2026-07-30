@@ -43,6 +43,10 @@ async function ensureMediaImported(project, plan, log) {
   const missing = [];
   for (const clip of plan.clips) {
     if (!byName.has(clip.fileName)) missing.push(clip.filePath);
+    // A B-roll source may not be anywhere else in the plan's own file list.
+    if (clip.videoOverride && !byName.has(clip.videoOverride.fileName)) {
+      missing.push(clip.videoOverride.filePath);
+    }
   }
   const toImport = [...new Set(missing)];
 
@@ -57,58 +61,136 @@ async function ensureMediaImported(project, plan, log) {
   }
 
   const resolved = new Map();
+  const needed = new Set();
   for (const clip of plan.clips) {
-    const item = byName.get(clip.fileName);
+    needed.add(clip.fileName);
+    if (clip.videoOverride) needed.add(clip.videoOverride.fileName);
+  }
+  for (const fileName of needed) {
+    const item = byName.get(fileName);
     if (!item) {
-      throw new Error(`Could not find ${clip.fileName} in the project after import`);
+      throw new Error(`Could not find ${fileName} in the project after import`);
     }
-    resolved.set(clip.fileName, item);
+    resolved.set(fileName, item);
   }
   return resolved;
 }
 
+/** Scratch track indexes (V2/A2) used to park the half of a B-roll placement
+ * we don't want. createOverwriteItemAction always places both a clip's video
+ * and its audio — there is no video-only or audio-only variant — so the way to
+ * end up with one source's picture over another's sound is to send the unwanted
+ * halves to tracks nobody reads, then sweep them. */
+const SCRATCH_VIDEO_TRACK = 1;
+const SCRATCH_AUDIO_TRACK = 1;
+
+/** Trims a project item to an in/out range, so the following overwrite edit
+ * inserts exactly the chosen moment rather than the whole file. */
+function setInOut(project, clipItem, inSec, outSec, label) {
+  project.lockedAccess(() => {
+    project.executeTransaction((compoundAction) => {
+      compoundAction.addAction(
+        clipItem.createSetInOutPointsAction(
+          ppro.TickTime.createWithSeconds(inSec),
+          ppro.TickTime.createWithSeconds(outSec),
+        ),
+      );
+    }, label);
+  });
+}
+
+function overwriteAt(project, editor, clipItem, atSec, videoTrack, audioTrack, label) {
+  project.lockedAccess(() => {
+    project.executeTransaction((compoundAction) => {
+      compoundAction.addAction(
+        editor.createOverwriteItemAction(
+          clipItem,
+          ppro.TickTime.createWithSeconds(atSec),
+          videoTrack,
+          audioTrack,
+        ),
+      );
+    }, label);
+  });
+}
+
+/** Empties the scratch tracks left behind by B-roll placements. Ripple is
+ * false throughout — removing these must not shift anything already placed. */
+async function clearScratchTracks(project, sequence, editor, log) {
+  const passes = [
+    { track: await sequence.getVideoTrack(SCRATCH_VIDEO_TRACK), mediaType: ppro.Constants.MediaType.VIDEO },
+    { track: await sequence.getAudioTrack(SCRATCH_AUDIO_TRACK), mediaType: ppro.Constants.MediaType.AUDIO },
+  ];
+
+  for (const { track, mediaType } of passes) {
+    if (!track) continue;
+    const items = await track.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
+    if (items.length === 0) continue;
+
+    let selection;
+    ppro.TrackItemSelection.createEmptySelection((s) => {
+      selection = s;
+    });
+    for (const item of items) selection.addItem(item, true);
+
+    project.lockedAccess(() => {
+      project.executeTransaction((compoundAction) => {
+        compoundAction.addAction(
+          editor.createRemoveItemsAction(selection, false, mediaType, false),
+        );
+      }, "clear scratch track");
+    });
+    log(`Cleared ${items.length} leftover item(s) from a scratch track`);
+  }
+}
+
 /**
- * Places every clip on V1/A1 at its planned timeline position using an
- * overwrite edit, so a clip never ripples the ones already placed — the
- * plan's timelineStartSec values are absolute and must be honored exactly.
+ * Places every clip at its planned timeline position using an overwrite edit,
+ * so a clip never ripples the ones already placed — the plan's
+ * timelineStartSec values are absolute and must be honored exactly.
+ *
+ * A clip with a videoOverride is placed twice: its own source for the audio
+ * (picture parked on the scratch video track) and the override's source for
+ * the picture (audio parked on the scratch audio track).
  */
 async function placeClips(project, sequence, plan, mediaByName, log) {
   const editor = ppro.SequenceEditor.getEditor(sequence);
+  let usedScratch = false;
 
   for (let i = 0; i < plan.clips.length; i++) {
     const clip = plan.clips[i];
     const clipItem = ppro.ClipProjectItem.cast(mediaByName.get(clip.fileName));
+    const at = clip.timelineStartSec;
 
-    // Trim the source to the planned in/out first, so the overwrite edit
-    // inserts exactly the chosen moment rather than the whole file. The same
-    // ProjectItem gets re-trimmed per placement, which is why a clip reused
-    // twice in one plan still lands with its own distinct range.
-    project.lockedAccess(() => {
-      project.executeTransaction((compoundAction) => {
-        compoundAction.addAction(
-          clipItem.createSetInOutPointsAction(
-            ppro.TickTime.createWithSeconds(clip.sourceInSec),
-            ppro.TickTime.createWithSeconds(clip.sourceOutSec),
-          ),
-        );
-      }, `set in/out for ${clip.fileName}`);
-    });
+    // The same ProjectItem gets re-trimmed per placement, which is why a clip
+    // reused twice in one plan still lands with its own distinct range.
+    setInOut(project, clipItem, clip.sourceInSec, clip.sourceOutSec, `set in/out for ${clip.fileName}`);
 
-    project.lockedAccess(() => {
-      project.executeTransaction((compoundAction) => {
-        compoundAction.addAction(
-          editor.createOverwriteItemAction(
-            clipItem,
-            ppro.TickTime.createWithSeconds(clip.timelineStartSec),
-            0,
-            0,
-          ),
-        );
-      }, `place ${clip.fileName} at ${clip.timelineStartSec}s`);
-    });
+    if (!clip.videoOverride) {
+      overwriteAt(project, editor, clipItem, at, 0, 0, `place ${clip.fileName} at ${at}s`);
+      log(`Placed ${i + 1}/${plan.clips.length}: ${clip.fileName}`);
+      continue;
+    }
 
-    log(`Placed ${i + 1}/${plan.clips.length}: ${clip.fileName}`);
+    // Audio from this moment's own clip; its picture goes to the scratch track.
+    overwriteAt(project, editor, clipItem, at, SCRATCH_VIDEO_TRACK, 0, `place audio of ${clip.fileName} at ${at}s`);
+
+    // Picture from the B-roll; its audio goes to the scratch track.
+    const overrideItem = ppro.ClipProjectItem.cast(mediaByName.get(clip.videoOverride.fileName));
+    setInOut(
+      project,
+      overrideItem,
+      clip.videoOverride.sourceInSec,
+      clip.videoOverride.sourceOutSec,
+      `set in/out for ${clip.videoOverride.fileName}`,
+    );
+    overwriteAt(project, editor, overrideItem, at, 0, SCRATCH_AUDIO_TRACK, `place b-roll ${clip.videoOverride.fileName} at ${at}s`);
+
+    usedScratch = true;
+    log(`Placed ${i + 1}/${plan.clips.length}: ${clip.fileName} (picture from ${clip.videoOverride.fileName})`);
   }
+
+  if (usedScratch) await clearScratchTracks(project, sequence, editor, log);
 }
 
 async function buildSequence(projectId, log) {
