@@ -87,4 +87,6 @@ All three are currently empty placeholders (`.gitkeep` only) and will be filled 
 - **Stage 2 (future):** a UXP panel inside Premiere for live interaction — no manual export/import round-trip.
 - **Stage 3 (future, not committed):** a read-back layer so the system also sees manual changes the user made, not just push changes to Premiere.
 
-Nothing in this repo talks to Premiere yet — don't assume any integration code exists.
+Stage 1 is **implemented**: [lib/export/fcp7.ts](lib/export/fcp7.ts) writes xmeml v5 into `./exports` (gitignored). Two things to know before touching it: everything in that format is measured in **frames**, so all timing goes through the sequence frame rate (getting it wrong yields an XML that imports but drifts out of sync), and each source `<file>` must be defined in full exactly **once** anywhere in the document and referenced by id thereafter — an audio-only source is defined on the audio track, so the definition cannot be hardcoded to the video branch.
+
+The generated XML is verified well-formed with correct frame math and no dangling file references, but **has not yet been test-imported into a real Premiere install** — that is still the open half of decision #2.

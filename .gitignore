@@ -52,3 +52,6 @@ next-env.d.ts
 
 # Downloaded Whisper model weights — large, fetched on first run
 /models
+
+# Exported timelines (generated artifacts)
+/exports

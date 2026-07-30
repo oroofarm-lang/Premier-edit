@@ -7,6 +7,7 @@ import { IngestButton } from "@/components/ingest-button";
 import { ApproveCheckpointButton } from "@/components/approve-checkpoint-button";
 import { TranscribeButton } from "@/components/transcribe-button";
 import { SelectContentButton } from "@/components/select-content-button";
+import { ExportButton } from "@/components/export-button";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,10 @@ export default async function ProjectPage({
       selections: {
         orderBy: { order: "asc" },
         include: { mediaAsset: true },
+      },
+      editVersions: {
+        orderBy: { versionNum: "desc" },
+        include: { timeline: true },
       },
     },
   });
@@ -227,6 +232,50 @@ export default async function ProjectPage({
                   </div>
                 )}
               </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {selectionCheckpoint?.approved && (
+        <Card className="mb-8">
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Rough cut → Premiere</CardTitle>
+            <ExportButton
+              projectId={project.id}
+              hasExports={project.editVersions.length > 0}
+            />
+          </CardHeader>
+          <CardContent>
+            {project.editVersions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Builds a butt-joined rough cut from the approved moments and
+                writes an FCP7 XML you import into Premiere via File → Import.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {project.editVersions.map((version) => (
+                  <li
+                    key={version.id}
+                    className="rounded-lg border px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-medium">v{version.versionNum}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {version.note}
+                      </span>
+                    </div>
+                    {version.timeline && (
+                      <p
+                        className="mt-1 break-all font-mono text-xs text-muted-foreground"
+                        dir="ltr"
+                      >
+                        {version.timeline.filePath}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
             )}
           </CardContent>
         </Card>
