@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="index.js"></script>
+  </head>
+  <body>
+    <sp-heading size="M">Premier Edit</sp-heading>
+    <sp-body id="status">Connecting…</sp-body>
+
+    <div id="project-block" class="block" hidden>
+      <sp-detail>Project</sp-detail>
+      <sp-body id="project-name"></sp-body>
+    </div>
+
+    <div id="sequence-block" class="block" hidden>
+      <sp-detail>Active sequence</sp-detail>
+      <sp-body id="sequence-name"></sp-body>
+    </div>
+
+    <div id="clips-block" class="block" hidden>
+      <sp-detail>Video track 1 clips</sp-detail>
+      <ul id="clip-list"></ul>
+    </div>
+
+    <sp-button id="refresh-button" variant="secondary">Refresh</sp-button>
+
+    <footer id="footer"></footer>
+  </body>
+</html>

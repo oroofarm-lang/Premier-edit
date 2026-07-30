@@ -1,0 +1,30 @@
+body {
+  margin: 0;
+  padding: 12px;
+  font-family: -apple-system, sans-serif;
+  color: var(--uxp-host-text-color, #eee);
+}
+
+.block {
+  margin-top: 10px;
+}
+
+#clip-list {
+  margin: 4px 0 0 0;
+  padding-left: 18px;
+}
+
+#clip-list li {
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+#refresh-button {
+  margin-top: 14px;
+}
+
+#footer {
+  margin-top: 10px;
+  font-size: 10px;
+  opacity: 0.6;
+}
