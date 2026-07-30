@@ -39,12 +39,16 @@ So v1's panel does not need its own live Claude call at all — it's simpler tha
 ```
 existing pipeline → CutClip[] (already approved by the user, per the 3-checkpoint MVP flow)
        ↓
-new: lib/premiere-panel/ (UXP panel, TypeScript)
+new: premiere-panel/ (UXP panel — see Phase 1 below for why not lib/premiere-panel/)
    - reads the approved plan (via a small local API the Next.js app exposes, or a file handoff — TBD in the plan)
    - for each CutClip: ppro.Sequence.insertClip() / equivalent, import media if not already in the project bin
-   - for each audio-crossfade join: apply the built-in Cross Fade (+3dB) transition via the API
+   - for each audio-crossfade join: keyframed volume fade via AudioComponentChain — NOT a transition, see correction below
    - surfaces a single confirmation ("Build N clips into a new sequence?") before doing anything, since creating a sequence is the only "destructive-ish" step — everything else is additive
 ```
+
+**Correction, 2026-07-30 (after inspecting the real `@adobe/premierepro` v26.3.0 type definitions, not guessing):** this doc originally assumed the panel could "apply the built-in Cross Fade (+3dB) transition via the API," mirroring what `lib/export/fcp7.ts` already does in the XML path. That's wrong for direct UXP execution. The real `.d.ts` (`premierepro.d.ts`, 4675 lines, pulled via `npm pack @adobe/premierepro@26.3.0`) exposes `TransitionFactory.createVideoTransition()` / `VideoClipTrackItem.createAddVideoTransitionAction()` for **video** transitions only — there is no `AudioTransitionFactory`, no `createAudioTransition`, no `createAddAudioTransitionAction` anywhere in the type file, and `AudioClipTrackItem`'s own method list has nothing transition-shaped either. UXP simply has no scripted way to add an audio crossfade transition as of this version, confirming the standing CLAUDE.md caveat about transitions/effects APIs.
+
+What the same `.d.ts` *does* expose: `AudioClipTrackItem.getComponentChain(): Promise<AudioComponentChain>`, and `AudioComponentChain`/`Component` support `createKeyframe()` and per-parameter keyframing. This is exactly the design spec's original **fallback path B** for audio smoothing (`docs/superpowers/specs/2026-07-30-editing-quality-design.md`, "Audio smoothing at cut boundaries") — a volume fade-in/fade-out via keyframes — just executed live through UXP instead of written as an FCP7 `<filter>` block. Phase 2 will implement audio smoothing this way, not via a transition object. This means Phase 2's live-built sequence will have a slightly gentler effect than the true crossfade the XML export path already produces (`KGAudioTransCrossFade3dB`, confirmed working against a real Premiere import in Task 11) — the XML path stays worth keeping as the fallback/comparison this doc already recommended adopting from the 8-agent proposal, not just for DOM-failure cases.
 
 A later version can add AutoEdit's actual differentiator — a live chat box where the user types free-form requests and Claude returns structured commands against a fresh sequence snapshot — but that is deliberately **out of scope for v1**, see below.
 
@@ -56,7 +60,7 @@ Chat Edit (arbitrary natural-language commands against a live timeline) is AutoE
 
 **In scope (v1):**
 - UXP panel project scaffold (manifest, dev-mode loading instructions)
-- Direct execution of an approved `CutClip[]` plan: media import, clip placement, audio-crossfade transitions (reusing the exact fixes from the in-flight `editing-quality` branch — handle frames, no `-1`-sentinel equivalent needed since this isn't XML anymore)
+- Direct execution of an approved `CutClip[]` plan: media import, clip placement, audio smoothing at cuts via keyframed volume fades through `AudioComponentChain` (not a transition object — see the 2026-07-30 correction above; UXP has no audio-transition API as of v26.3.0). Handle-frame reservation from the in-flight `editing-quality` branch still matters here since the fade needs real spare source audio to fade into/out of, same reasoning as the XML path's crossfade.
 - One confirmation step before building the sequence
 - Manual dev-mode testing (load unpacked via UXP Developer Tool) — no packaging/distribution yet
 
