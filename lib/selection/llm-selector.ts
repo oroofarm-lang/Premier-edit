@@ -17,7 +17,14 @@ const MODEL = "claude-sonnet-5";
 const SHORTLIST_MULTIPLE = 4;
 const MAX_SHORTLIST = 60;
 
-type LlmChoice = { index: number; score: number; reason: string; beat: string };
+type LlmChoice = {
+  index: number;
+  score: number;
+  reason: string;
+  beat: string;
+  /** Shortlist index whose footage plays over this moment's audio, if any. */
+  videoFrom?: number;
+};
 
 function buildPrompt(
   request: SelectionRequest,
@@ -53,12 +60,22 @@ ${items}
 לכל מועמד שנבחר ציין גם "beat" — איזה חלק מהמבנה שתכננת הוא ממלא (למשל
 "הוק", "גוף", "סיום"). "reason" חייב להיות קצר: עד 12 מילים, לא משפט מלא.
 
+הפרדה בין אודיו לווידאו (B-roll): הסיפור נבנה בשני ערוצים — מה שנשמע ומה
+שנראה — והם לא חייבים להגיע מאותו קליפ. אם הדיבור של רגע מסוים חזק אבל
+התמונה שלו חלשה (למשל דובר סטטי מול המצלמה), ורגע אחר שאתה כבר בוחר מציע
+תמונה טובה יותר לאותו ביט — הוסף לרגע החלש "videoFrom" עם המספר # של אותו
+רגע אחר. האודיו יישאר של הרגע המקורי, רק התמונה תוחלף. כללים:
+- "videoFrom" חייב להצביע על רגע שאתה בוחר בפועל ברשימת selections.
+- אסור להצביע על רגע שיש לו בעצמו "videoFrom".
+- ברירת המחדל היא בלי השדה הזה. השתמש בו רק כשזה באמת משפר.
+
 החזר אך ורק JSON תקין בפורמט הבא, בלי שום טקסט לפני או אחרי:
 {
   "premise": "משפט אחד שמתאר את הרעיון המרכזי של הסרטון",
   "beatPlan": ["הוק", "גוף", "סיום"],
   "selections": [
-    { "index": 0, "score": 0.9, "beat": "הוק", "reason": "עד 12 מילים — למה זה ההוק" }
+    { "index": 0, "score": 0.9, "beat": "הוק", "reason": "עד 12 מילים — למה זה ההוק" },
+    { "index": 5, "score": 0.8, "beat": "גוף", "reason": "מסביר את המרכיבים", "videoFrom": 0 }
   ]
 }
 הסדר במערך selections הוא סדר ההופעה בקאט הסופי.`;
@@ -112,6 +129,34 @@ export function validatePlan(
     }
   }
 
+  // A video override may only borrow from a moment this same plan is actually
+  // placing — otherwise the cut would pull in footage the user never approved.
+  const chosenIndexes = new Set(plan.choices.map((c) => c.index));
+  const overriddenIndexes = new Set(
+    plan.choices.filter((c) => c.videoFrom !== undefined).map((c) => c.index),
+  );
+  for (const choice of plan.choices) {
+    if (choice.videoFrom === undefined) continue;
+    if (!shortlist[choice.videoFrom]) {
+      return {
+        ok: false,
+        reason: `videoFrom ${choice.videoFrom} does not exist in the shortlist.`,
+      };
+    }
+    if (!chosenIndexes.has(choice.videoFrom)) {
+      return {
+        ok: false,
+        reason: `videoFrom ${choice.videoFrom} points at a clip this plan does not select — B-roll may only come from moments already in the cut.`,
+      };
+    }
+    if (overriddenIndexes.has(choice.videoFrom)) {
+      return {
+        ok: false,
+        reason: `videoFrom ${choice.videoFrom} points at a moment that itself overrides its video — a moment's video must resolve in one hop.`,
+      };
+    }
+  }
+
   return { ok: true };
 }
 
@@ -125,11 +170,20 @@ function parsePlan(text: string): LlmPlan {
     premise: String(parsed.premise ?? ""),
     beatPlan: Array.isArray(parsed.beatPlan) ? parsed.beatPlan.map(String) : [],
     choices: parsed.selections.map(
-      (s: { index: unknown; score: unknown; reason: unknown; beat: unknown }) => ({
+      (s: {
+        index: unknown;
+        score: unknown;
+        reason: unknown;
+        beat: unknown;
+        videoFrom?: unknown;
+      }) => ({
         index: Number(s.index),
         score: Number(s.score),
         reason: String(s.reason ?? ""),
         beat: String(s.beat ?? ""),
+        ...(s.videoFrom === undefined || s.videoFrom === null
+          ? {}
+          : { videoFrom: Number(s.videoFrom) }),
       }),
     ),
   };
@@ -195,14 +249,35 @@ export class LlmContentSelector implements ContentSelector {
       total += seconds;
     }
 
-    return chosen.map(({ candidate, choice }, order) => ({
-      mediaAssetId: candidate.mediaAssetId,
-      startSec: candidate.startSec,
-      endSec: candidate.endSec,
-      order,
-      score: Math.max(0, Math.min(1, choice.score)),
-      reason: choice.reason ? `${choice.beat}: ${choice.reason}` : "נבחר על ידי מודל השפה",
-    }));
+    // Validation guaranteed every videoFrom pointed at a selected moment, but
+    // the budget cap above can drop one afterwards — so re-check against what
+    // actually survived rather than trusting the pre-cap guarantee.
+    const survivingIndexes = new Set(chosen.map(({ choice }) => choice.index));
+
+    return chosen.map(({ candidate, choice }, order) => {
+      const source =
+        choice.videoFrom !== undefined && survivingIndexes.has(choice.videoFrom)
+          ? shortlist[choice.videoFrom]
+          : undefined;
+
+      return {
+        mediaAssetId: candidate.mediaAssetId,
+        startSec: candidate.startSec,
+        endSec: candidate.endSec,
+        order,
+        score: Math.max(0, Math.min(1, choice.score)),
+        reason: choice.reason ? `${choice.beat}: ${choice.reason}` : "נבחר על ידי מודל השפה",
+        ...(source
+          ? {
+              videoOverride: {
+                mediaAssetId: source.mediaAssetId,
+                startSec: source.startSec,
+                endSec: source.endSec,
+              },
+            }
+          : {}),
+      };
+    });
   }
 
   private async requestPlan(prompt: string): Promise<LlmPlan> {

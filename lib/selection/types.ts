@@ -32,6 +32,16 @@ export type SelectedSegment = {
   score: number;
   /** Human-readable justification, shown in the approval UI. */
   reason: string;
+  /**
+   * Footage to show over this moment's audio, when the strongest visual for
+   * the beat lives in a different clip than the one being heard (B-roll
+   * cutaway). Absent means picture and sound both come from this moment.
+   */
+  videoOverride?: {
+    mediaAssetId: string;
+    startSec: number;
+    endSec: number;
+  };
 };
 
 export type SelectionRequest = {

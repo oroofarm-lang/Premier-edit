@@ -64,4 +64,43 @@ describe("validatePlan", () => {
       reason: "The plan selected no clips.",
     });
   });
+
+  it("accepts a videoFrom pointing at another moment the plan also selected", () => {
+    const plan = {
+      premise: "test",
+      beatPlan: ["הוק", "גוף"],
+      choices: [
+        { index: 0, score: 0.9, reason: "hook", beat: "הוק" },
+        { index: 1, score: 0.8, reason: "body over b-roll", beat: "גוף", videoFrom: 0 },
+      ],
+    };
+    expect(validatePlan(plan, shortlist)).toEqual({ ok: true });
+  });
+
+  it("rejects a videoFrom pointing at a shortlist entry the plan did not select", () => {
+    const plan = {
+      premise: "test",
+      beatPlan: ["הוק", "גוף"],
+      choices: [
+        { index: 0, score: 0.9, reason: "hook", beat: "הוק" },
+        { index: 1, score: 0.8, reason: "body", beat: "גוף", videoFrom: 3 },
+      ],
+    };
+    const result = validatePlan(plan, shortlist);
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a videoFrom that points at a moment which itself overrides its video", () => {
+    const plan = {
+      premise: "test",
+      beatPlan: ["הוק", "גוף", "סיום"],
+      choices: [
+        { index: 0, score: 0.9, reason: "hook", beat: "הוק" },
+        { index: 1, score: 0.8, reason: "body", beat: "גוף", videoFrom: 0 },
+        { index: 2, score: 0.7, reason: "end", beat: "סיום", videoFrom: 1 },
+      ],
+    };
+    const result = validatePlan(plan, shortlist);
+    expect(result.ok).toBe(false);
+  });
 });
