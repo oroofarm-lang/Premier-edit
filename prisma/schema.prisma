@@ -65,8 +65,9 @@ model MediaAsset {
   channels      Int?
   createdAt     DateTime   @default(now())
 
-  transcript    Transcript?
-  selections    Selection[]
+  transcript      Transcript?
+  visualAnalysis  VisualAnalysis?
+  selections      Selection[]
 }
 
 model Transcript {
@@ -77,6 +78,22 @@ model Transcript {
   engine       String
   text         String
   segmentsJson String
+  createdAt    DateTime    @default(now())
+}
+
+// Per-clip visual understanding — what a vision-capable model sees in a few
+// sampled frames, independent of whatever was said. Content selection uses
+// this alongside the transcript so a silent or sparsely-spoken clip can still
+// be picked on visual merit (e.g. a clean product close-up).
+model VisualAnalysis {
+  id           String      @id @default(cuid())
+  mediaAsset   MediaAsset  @relation(fields: [mediaAssetId], references: [id])
+  mediaAssetId String      @unique
+  engine       String
+  summary      String
+  shotType     String?
+  tagsJson     String
+  qualityNotes String?
   createdAt    DateTime    @default(now())
 }
 

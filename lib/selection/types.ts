@@ -10,7 +10,16 @@ export type CandidateSegment = {
   filePath: string;
   startSec: number;
   endSec: number;
+  /** Spoken text for this span, "" if there is none (silent or no transcript). */
   text: string;
+  /**
+   * What a vision model saw in the clip, independent of speech — present only
+   * when visual analysis has run (requires an Anthropic API key). Lets a
+   * silent or sparsely-spoken clip still be judged on visual merit instead of
+   * being invisible to a transcript-only selector.
+   */
+  visualSummary?: string | null;
+  visualTags?: string[];
 };
 
 export type SelectedSegment = {

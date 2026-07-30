@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@prisma/client": "^6.19.3",
     "class-variance-authority": "^0.7.1",

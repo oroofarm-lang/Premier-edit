@@ -40,15 +40,32 @@ function looselyMatches(a: string, b: string): boolean {
   return longer.endsWith(shorter) && longer.length - shorter.length <= 2;
 }
 
-function briefRelevance(text: string, briefTokens: string[]): number {
+/**
+ * Spoken text is the primary signal; visual tags/summary (present only when
+ * vision analysis ran) are a weaker secondary one — a tag match means "this
+ * is probably relevant," not "this is definitely what the brief is about."
+ */
+function briefRelevance(
+  text: string,
+  briefTokens: string[],
+  visualText?: string,
+): number {
   if (briefTokens.length === 0) return 0;
-  const words = tokenize(text);
-  if (words.length === 0) return 0;
 
-  const matched = briefTokens.filter((briefWord) =>
-    words.some((word) => looselyMatches(word, briefWord)),
-  );
-  return matched.length / briefTokens.length;
+  const spokenWords = tokenize(text);
+  const spokenMatched = briefTokens.filter((briefWord) =>
+    spokenWords.some((word) => looselyMatches(word, briefWord)),
+  ).length;
+  if (spokenMatched > 0) return spokenMatched / briefTokens.length;
+
+  if (!visualText) return 0;
+  const visualWords = tokenize(visualText);
+  const visualMatched = briefTokens.filter((briefWord) =>
+    visualWords.some((word) => looselyMatches(word, briefWord)),
+  ).length;
+  // Capped below what spoken relevance could reach, and scaled down —
+  // visual-only relevance is a hint, not the same confidence as hearing it.
+  return Math.min(0.6, (visualMatched / briefTokens.length) * 0.75);
 }
 
 function fillerPenalty(text: string): number {
@@ -74,6 +91,7 @@ function describe(
   filler: number,
   duration: number,
   hasBrief: boolean,
+  hasSpeech: boolean,
 ): string {
   const parts: string[] = [];
 
@@ -82,7 +100,7 @@ function describe(
   } else if (relevance >= 0.5) {
     parts.push("strongly matches the brief");
   } else if (relevance > 0) {
-    parts.push("partly matches the brief");
+    parts.push(hasSpeech ? "partly matches the brief" : "matches the brief visually, no speech");
   } else {
     parts.push("no brief keywords");
   }
@@ -109,7 +127,10 @@ export class HeuristicContentSelector implements ContentSelector {
 
     const scored = request.candidates.map((candidate) => {
       const seconds = candidate.endSec - candidate.startSec;
-      const relevance = briefRelevance(candidate.text, briefTokens);
+      const visualText = [candidate.visualSummary, ...(candidate.visualTags ?? [])]
+        .filter(Boolean)
+        .join(" ");
+      const relevance = briefRelevance(candidate.text, briefTokens, visualText);
       const filler = fillerPenalty(candidate.text);
       const duration = durationFitness(seconds);
 
@@ -123,7 +144,7 @@ export class HeuristicContentSelector implements ContentSelector {
         candidate,
         seconds,
         score: Math.max(0, Math.min(1, raw)),
-        reason: describe(relevance, filler, duration, hasBrief),
+        reason: describe(relevance, filler, duration, hasBrief, candidate.text.trim().length > 0),
       };
     });
 
