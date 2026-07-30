@@ -58,3 +58,6 @@ next-env.d.ts
 
 # Generated test media (TTS Hebrew samples — regenerable, not source)
 /test-media
+
+# Git worktrees used for isolated feature work (superpowers:using-git-worktrees)
+/.worktrees
