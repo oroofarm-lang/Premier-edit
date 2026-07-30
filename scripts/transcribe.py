@@ -25,7 +25,7 @@ def transcribe_one(model, audio_path: str, language: str) -> dict:
         audio_path,
         language=language,
         vad_filter=True,
-        word_timestamps=False,
+        word_timestamps=True,
     )
 
     collected = []
@@ -33,11 +33,21 @@ def transcribe_one(model, audio_path: str, language: str) -> dict:
         text = segment.text.strip()
         if not text:
             continue
+        words = [
+            {
+                "word": w.word.strip(),
+                "start": round(w.start, 3),
+                "end": round(w.end, 3),
+            }
+            for w in (segment.words or [])
+            if w.word.strip()
+        ]
         collected.append(
             {
                 "start": round(segment.start, 3),
                 "end": round(segment.end, 3),
                 "text": text,
+                "words": words,
             }
         )
         # Surface progress on long files rather than looking hung.
