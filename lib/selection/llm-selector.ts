@@ -17,7 +17,7 @@ const MODEL = "claude-sonnet-5";
 const SHORTLIST_MULTIPLE = 4;
 const MAX_SHORTLIST = 60;
 
-type LlmChoice = { index: number; score: number; reason: string };
+type LlmChoice = { index: number; score: number; reason: string; beat: string };
 
 function buildPrompt(
   request: SelectionRequest,
@@ -46,29 +46,93 @@ ${SOCIAL_EDITING_GUIDELINES}
 רשימת המועמדים (מספר # הוא המזהה שאתה מחזיר):
 ${items}
 
+לפני שאתה בוחר, תכנן: מה הפרמיסה של הסרטון במשפט אחד, ומה מבנה הביטים
+(לדוגמה: הוק, גוף, סיום) שאתה מתכוון לבנות מהם.
+
 רק את המועמדים שאתה בפועל בוחר לקאט הסופי — לא צריך לחוות דעה על כולם.
-"reason" חייב להיות קצר: עד 12 מילים, לא משפט מלא.
+לכל מועמד שנבחר ציין גם "beat" — איזה חלק מהמבנה שתכננת הוא ממלא (למשל
+"הוק", "גוף", "סיום"). "reason" חייב להיות קצר: עד 12 מילים, לא משפט מלא.
 
 החזר אך ורק JSON תקין בפורמט הבא, בלי שום טקסט לפני או אחרי:
 {
+  "premise": "משפט אחד שמתאר את הרעיון המרכזי של הסרטון",
+  "beatPlan": ["הוק", "גוף", "סיום"],
   "selections": [
-    { "index": 0, "score": 0.9, "reason": "עד 12 מילים — תפקיד בסיפור, הוק/גוף/סיום" }
+    { "index": 0, "score": 0.9, "beat": "הוק", "reason": "עד 12 מילים — למה זה ההוק" }
   ]
 }
-הסדר במערך הוא סדר ההופעה בקאט הסופי.`;
+הסדר במערך selections הוא סדר ההופעה בקאט הסופי.`;
 }
 
-function parseChoices(text: string): LlmChoice[] {
+type LlmPlan = {
+  premise: string;
+  beatPlan: string[];
+  choices: LlmChoice[];
+};
+
+/** How many seconds into the cut the hook must land, per the researched
+ * short-form guidelines already used elsewhere in this prompt. */
+const HOOK_WINDOW_SEC = 3;
+/** How many times the same source clip may appear before a plan is rejected —
+ * this is the exact "reused one long clip four times" failure that motivated
+ * building the LLM selector in the first place (see CLAUDE.md). */
+const MAX_REUSE_PER_ASSET = 2;
+
+export function validatePlan(
+  plan: LlmPlan,
+  shortlist: CandidateSegment[],
+): { ok: true } | { ok: false; reason: string } {
+  if (plan.choices.length === 0) {
+    return { ok: false, reason: "The plan selected no clips." };
+  }
+
+  const first = shortlist[plan.choices[0].index];
+  if (!first) {
+    return { ok: false, reason: `Choice at index ${plan.choices[0].index} does not exist in the shortlist.` };
+  }
+  const firstDuration = first.endSec - first.startSec;
+  if (firstDuration > HOOK_WINDOW_SEC) {
+    return {
+      ok: false,
+      reason: `The opening clip is ${firstDuration.toFixed(1)}s, longer than the ${HOOK_WINDOW_SEC}s hook window — the hook must land fast.`,
+    };
+  }
+
+  const usesByAsset = new Map<string, number>();
+  for (const choice of plan.choices) {
+    const candidate = shortlist[choice.index];
+    if (!candidate) continue;
+    const count = (usesByAsset.get(candidate.mediaAssetId) ?? 0) + 1;
+    usesByAsset.set(candidate.mediaAssetId, count);
+    if (count > MAX_REUSE_PER_ASSET) {
+      return {
+        ok: false,
+        reason: `Media asset ${candidate.mediaAssetId} is used ${count} times, more than the ${MAX_REUSE_PER_ASSET}-use diversity limit.`,
+      };
+    }
+  }
+
+  return { ok: true };
+}
+
+function parsePlan(text: string): LlmPlan {
   const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   const parsed = JSON.parse(cleaned);
   if (!Array.isArray(parsed.selections)) {
     throw new Error("LLM selection response missing a 'selections' array.");
   }
-  return parsed.selections.map((s: { index: unknown; score: unknown; reason: unknown }) => ({
-    index: Number(s.index),
-    score: Number(s.score),
-    reason: String(s.reason ?? ""),
-  }));
+  return {
+    premise: String(parsed.premise ?? ""),
+    beatPlan: Array.isArray(parsed.beatPlan) ? parsed.beatPlan.map(String) : [],
+    choices: parsed.selections.map(
+      (s: { index: unknown; score: unknown; reason: unknown; beat: unknown }) => ({
+        index: Number(s.index),
+        score: Number(s.score),
+        reason: String(s.reason ?? ""),
+        beat: String(s.beat ?? ""),
+      }),
+    ),
+  };
 }
 
 /**
@@ -99,22 +163,22 @@ export class LlmContentSelector implements ContentSelector {
     const shortlist = await this.buildShortlist(request);
     if (shortlist.length === 0) return [];
 
-    const message = await this.client.messages.create({
-      model: MODEL,
-      max_tokens: 4096,
-      messages: [{ role: "user", content: buildPrompt(request, shortlist) }],
-    });
+    const basePrompt = buildPrompt(request, shortlist);
+    let plan = await this.requestPlan(basePrompt);
+    let validation = validatePlan(plan, shortlist);
 
-    const textBlock = message.content.find((block) => block.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      throw new Error("LLM selection response contained no text block.");
+    if (!validation.ok) {
+      const retryPrompt = `${basePrompt}\n\nהניסיון הקודם שלך נדחה: ${validation.reason}\nתקן את התוכנית כך שתעמוד בכללים ונסה שוב.`;
+      plan = await this.requestPlan(retryPrompt);
+      validation = validatePlan(plan, shortlist);
+      if (!validation.ok) {
+        throw new Error(
+          `LLM selection plan failed validation twice in a row: ${validation.reason}`,
+        );
+      }
     }
-    if (message.stop_reason === "max_tokens") {
-      throw new Error(
-        "LLM selection response was cut off at the token limit before finishing its JSON.",
-      );
-    }
-    const choices = parseChoices(textBlock.text);
+
+    const choices = plan.choices;
 
     // Defensive budget cap: the model is asked to respect targetDurationSec
     // but isn't guaranteed to — stop once the running total goes over rather
@@ -137,8 +201,27 @@ export class LlmContentSelector implements ContentSelector {
       endSec: candidate.endSec,
       order,
       score: Math.max(0, Math.min(1, choice.score)),
-      reason: choice.reason || "נבחר על ידי מודל השפה",
+      reason: choice.reason ? `${choice.beat}: ${choice.reason}` : "נבחר על ידי מודל השפה",
     }));
+  }
+
+  private async requestPlan(prompt: string): Promise<LlmPlan> {
+    const message = await this.client.messages.create({
+      model: MODEL,
+      max_tokens: 4096,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const textBlock = message.content.find((block) => block.type === "text");
+    if (!textBlock || textBlock.type !== "text") {
+      throw new Error("LLM selection response contained no text block.");
+    }
+    if (message.stop_reason === "max_tokens") {
+      throw new Error(
+        "LLM selection response was cut off at the token limit before finishing its JSON.",
+      );
+    }
+    return parsePlan(textBlock.text);
   }
 
   private async buildShortlist(

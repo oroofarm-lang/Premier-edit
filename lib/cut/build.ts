@@ -1,11 +1,25 @@
 import path from "node:path";
 import { prisma } from "@/lib/db";
+import { snapToWordBoundary } from "./snap";
 import type { CutClip, CutTimeline } from "./types";
+import type { TranscriptWord } from "@/lib/transcription/types";
 
 /** Fallbacks for when the source material carries no usable video metadata. */
 const DEFAULT_FPS = 25;
 const DEFAULT_WIDTH = 1080;
 const DEFAULT_HEIGHT = 1920;
+
+/** Audio-only crossfade overlap at each internal join, in seconds. */
+const AUDIO_CROSSFADE_SEC = 0.15;
+
+/** All words across every segment of an asset's transcript, in one flat, time-sorted list. */
+function wordsForAsset(transcriptSegmentsJson: string | undefined): TranscriptWord[] {
+  if (!transcriptSegmentsJson) return [];
+  const segments = JSON.parse(transcriptSegmentsJson) as {
+    words?: TranscriptWord[];
+  }[];
+  return segments.flatMap((s) => s.words ?? []);
+}
 
 /**
  * Turns approved selections into a butt-joined sequence: each chosen moment
@@ -19,7 +33,7 @@ export async function buildCutTimeline(projectId: string): Promise<CutTimeline> 
     include: {
       selections: {
         orderBy: { order: "asc" },
-        include: { mediaAsset: true },
+        include: { mediaAsset: { include: { transcript: true } } },
       },
     },
   });
@@ -44,15 +58,25 @@ export async function buildCutTimeline(projectId: string): Promise<CutTimeline> 
 
   for (const selection of project.selections) {
     const asset = selection.mediaAsset;
-    const length = selection.endSec - selection.startSec;
+
+    const words = wordsForAsset(asset.transcript?.segmentsJson);
+    const snapped = snapToWordBoundary(selection.startSec, selection.endSec, words);
+    // Never let a snap reach past the file itself.
+    const sourceInSec = Math.max(0, snapped.startSec);
+    const sourceOutSec = asset.durationSec
+      ? Math.min(asset.durationSec, snapped.endSec)
+      : snapped.endSec;
+    const length = sourceOutSec - sourceInSec;
 
     clips.push({
       filePath: asset.filePath,
       fileName: path.basename(asset.filePath),
       hasVideo: asset.width !== null && asset.height !== null,
       hasAudio: asset.sampleRate !== null || asset.kind === "AUDIO",
-      sourceInSec: selection.startSec,
-      sourceOutSec: selection.endSec,
+      sourceInSec,
+      sourceOutSec,
+      audioInSec: sourceInSec,
+      audioOutSec: sourceOutSec,
       timelineStartSec: playhead,
       timelineEndSec: playhead + length,
       sourceDurationSec: asset.durationSec ?? length,
@@ -62,6 +86,23 @@ export async function buildCutTimeline(projectId: string): Promise<CutTimeline> 
     });
 
     playhead += length;
+  }
+
+  // Widen each internal join's audio range into real, bounded source
+  // footage so a crossfade transition has material to blend from — see
+  // CutClip.audioInSec/audioOutSec.
+  for (let i = 0; i < clips.length - 1; i++) {
+    const current = clips[i];
+    const next = clips[i + 1];
+    if (!current.hasAudio || !next.hasAudio) continue;
+    const halfOverlap = AUDIO_CROSSFADE_SEC / 2;
+    // Clamped to each clip's own real duration — this is reaching into footage
+    // that actually exists on disk, never manufacturing frames that don't.
+    current.audioOutSec = Math.min(
+      current.sourceDurationSec,
+      current.sourceOutSec + halfOverlap,
+    );
+    next.audioInSec = Math.max(0, next.sourceInSec - halfOverlap);
   }
 
   return {

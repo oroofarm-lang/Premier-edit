@@ -3,10 +3,19 @@
 // selection, captions — talks to this interface, so swapping a local Whisper
 // for a cloud vendor later is a new implementation, not a rewrite.
 
+export type TranscriptWord = {
+  word: string;
+  startSec: number;
+  endSec: number;
+};
+
 export type TranscriptSegment = {
   startSec: number;
   endSec: number;
   text: string;
+  /** Per-word timing, when the engine provides it — used to snap cut points
+   * to real word boundaries instead of wherever the engine closed a sentence. */
+  words?: TranscriptWord[];
 };
 
 export type TranscriptionResult = {
