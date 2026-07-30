@@ -112,6 +112,10 @@ export async function buildCutTimeline(projectId: string): Promise<CutTimeline> 
               fileName: path.basename(overrideAsset.filePath),
               sourceInSec: fitted.startSec,
               sourceOutSec: fitted.endSec,
+              sourceDurationSec: overrideAsset.durationSec ?? length,
+              fps: overrideAsset.fps,
+              width: overrideAsset.width,
+              height: overrideAsset.height,
             },
           }
         : {}),

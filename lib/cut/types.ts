@@ -46,6 +46,12 @@ export type CutClip = {
     fileName: string;
     sourceInSec: number;
     sourceOutSec: number;
+    /** The override file's own full duration, for its XML file reference. */
+    sourceDurationSec: number;
+    /** The override file's own frame rate — its in/out are in ITS frames. */
+    fps: number | null;
+    width: number | null;
+    height: number | null;
   };
 };
 

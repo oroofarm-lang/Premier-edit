@@ -43,12 +43,44 @@ function rateXml(fps: number, indent: string): string {
   ].join("\n");
 }
 
+/**
+ * What a source file actually contains, gathered across every clip that uses
+ * it. A file used only as B-roll still has its own audio stream — we simply
+ * don't place it — and a file used both ways must be declared once, correctly,
+ * for both.
+ */
+function mediaCapabilities(
+  filePath: string,
+  timeline: CutTimeline,
+): { hasVideo: boolean; hasAudio: boolean; width: number | null; height: number | null } {
+  let hasVideo = false;
+  let hasAudio = false;
+  let width: number | null = null;
+  let height: number | null = null;
+
+  for (const clip of timeline.clips) {
+    if (clip.filePath === filePath) {
+      hasVideo ||= clip.hasVideo;
+      hasAudio ||= clip.hasAudio;
+      width ??= clip.width;
+      height ??= clip.height;
+    }
+    if (clip.videoOverride?.filePath === filePath) {
+      hasVideo = true;
+      width ??= clip.videoOverride.width;
+      height ??= clip.videoOverride.height;
+    }
+  }
+
+  return { hasVideo, hasAudio, width, height };
+}
+
 function clipItemXml(
   clip: CutClip,
   index: number,
   timeline: CutTimeline,
   mediaType: "video" | "audio",
-  definedFiles: Set<string>,
+  fileIds: Map<string, string>,
   edges: { startIsTransition?: boolean; endIsTransition?: boolean } = {},
 ): string {
   // Two different clocks are in play. <start>/<end> place the clip on the
@@ -56,21 +88,40 @@ function clipItemXml(
   // file, so they count that file's OWN frames — mixing the two is how a cut
   // that looks right in the XML ends up pulling the wrong footage.
   const sequenceFps = timeline.fps;
-  const sourceFps = clip.fps ?? timeline.fps;
   const id = `clipitem-${mediaType}-${index + 1}`;
-  const fileId = `file-${index + 1}`;
-  const name = escapeXml(clip.fileName);
+
+  // A moment's picture and sound can come from different files (B-roll), so
+  // the video branch reads its source — path, rate, duration — from the
+  // override when there is one. Its in/out are in ITS frames, not the
+  // narration clip's, which is why the rate has to travel with it.
+  const override = mediaType === "video" ? clip.videoOverride : undefined;
+  const filePath = override?.filePath ?? clip.filePath;
+  const name = escapeXml(override?.fileName ?? clip.fileName);
+  const sourceFps = override?.fps ?? clip.fps ?? timeline.fps;
+  const sourceDurationSec = override?.sourceDurationSec ?? clip.sourceDurationSec;
+
+  // File ids are keyed by path, not by clip index: one file can back several
+  // clips, and one clip can pull from two files. Indexing by clip would give a
+  // clip's video and audio the same id while pointing at different media.
+  let fileId = fileIds.get(filePath);
+  const needsDefinition = fileId === undefined;
+  if (fileId === undefined) {
+    fileId = `file-${fileIds.size + 1}`;
+    fileIds.set(filePath, fileId);
+  }
 
   // Audio uses the wider, handle-inclusive range reserved for the crossfade
   // to blend from (see CutClip.audioInSec/audioOutSec); video is untouched.
-  const inSec = mediaType === "audio" ? clip.audioInSec : clip.sourceInSec;
-  const outSec = mediaType === "audio" ? clip.audioOutSec : clip.sourceOutSec;
+  const inSec =
+    mediaType === "audio" ? clip.audioInSec : override?.sourceInSec ?? clip.sourceInSec;
+  const outSec =
+    mediaType === "audio" ? clip.audioOutSec : override?.sourceOutSec ?? clip.sourceOutSec;
 
   const lines = [
     `          <clipitem id="${id}">`,
     `            <name>${name}</name>`,
     `            <enabled>TRUE</enabled>`,
-    `            <duration>${toFrames(clip.sourceDurationSec, sourceFps)}</duration>`,
+    `            <duration>${toFrames(sourceDurationSec, sourceFps)}</duration>`,
     rateXml(sourceFps, "            "),
     // Whichever edge touches a <transitionitem> must literally be -1, not a
     // computed frame number — that sentinel is how Premiere knows the
@@ -85,28 +136,32 @@ function clipItemXml(
   // definition has to go on whichever clipitem comes first — for an audio-only
   // source that is the audio track, and emitting only a bare reference there
   // would leave Premiere with media it cannot resolve.
-  const needsDefinition = !definedFiles.has(fileId);
+  //
+  // The definition describes the FILE, not this particular use of it: the same
+  // source can appear as a full clip in one place and as silent B-roll in
+  // another, so its capabilities come from the whole-timeline scan rather than
+  // from whichever clipitem happened to reach it first.
   if (needsDefinition) {
-    definedFiles.add(fileId);
+    const media = mediaCapabilities(filePath, timeline);
     lines.push(
       `            <file id="${fileId}">`,
       `              <name>${name}</name>`,
-      `              <pathurl>${escapeXml(toFileUrl(clip.filePath))}</pathurl>`,
+      `              <pathurl>${escapeXml(toFileUrl(filePath))}</pathurl>`,
       rateXml(sourceFps, "              "),
-      `              <duration>${toFrames(clip.sourceDurationSec, sourceFps)}</duration>`,
+      `              <duration>${toFrames(sourceDurationSec, sourceFps)}</duration>`,
       `              <media>`,
     );
-    if (clip.hasVideo) {
+    if (media.hasVideo) {
       lines.push(
         `                <video>`,
         `                  <samplecharacteristics>`,
-        `                    <width>${clip.width ?? timeline.width}</width>`,
-        `                    <height>${clip.height ?? timeline.height}</height>`,
+        `                    <width>${media.width ?? timeline.width}</width>`,
+        `                    <height>${media.height ?? timeline.height}</height>`,
         `                  </samplecharacteristics>`,
         `                </video>`,
       );
     }
-    if (clip.hasAudio) {
+    if (media.hasAudio) {
       lines.push(
         `                <audio>`,
         `                  <channelcount>2</channelcount>`,
@@ -170,12 +225,14 @@ export function buildFcp7Xml(timeline: CutTimeline): string {
 
   // Shared across both tracks: each source file is defined once in the whole
   // document, wherever it first appears, and referenced by id after that.
-  const definedFiles = new Set<string>();
+  // Keyed by path — a file can back several clips, and a clip can pull video
+  // and audio from two different files.
+  const fileIds = new Map<string, string>();
 
   const videoClips = timeline.clips
     .map((clip, index) =>
-      clip.hasVideo
-        ? clipItemXml(clip, index, timeline, "video", definedFiles)
+      clip.hasVideo || clip.videoOverride
+        ? clipItemXml(clip, index, timeline, "video", fileIds)
         : null,
     )
     .filter((x): x is string => x !== null);
@@ -197,7 +254,7 @@ export function buildFcp7Xml(timeline: CutTimeline): string {
       nextEntry !== undefined && nextEntry.clip.timelineStartSec === clip.timelineEndSec;
 
     audioClips.push(
-      clipItemXml(clip, index, timeline, "audio", definedFiles, {
+      clipItemXml(clip, index, timeline, "audio", fileIds, {
         startIsTransition: touchesPrevTransition,
         endIsTransition: touchesNextTransition,
       }),
