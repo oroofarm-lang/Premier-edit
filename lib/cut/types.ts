@@ -7,6 +7,19 @@ export type CutClip = {
   /** Source in/out, in seconds. */
   sourceInSec: number;
   sourceOutSec: number;
+  /**
+   * Audio-only in/out, in source seconds. Deliberately wider than
+   * sourceInSec/sourceOutSec by half the crossfade overlap on each side that
+   * has a neighbor — the video cut stays exactly where selection put it, only
+   * the audio track reaches into real, not-otherwise-used source footage so a
+   * crossfade transition has material to blend (confirmed against a real
+   * Premiere-exported reference file: a transition with no spare footage on
+   * either side just produces a hard cut, not a dissolve). Equal to
+   * sourceInSec/sourceOutSec for a clip with no neighbor on that side (first
+   * clip's start, last clip's end).
+   */
+  audioInSec: number;
+  audioOutSec: number;
   /** Position on the timeline, in seconds. */
   timelineStartSec: number;
   timelineEndSec: number;

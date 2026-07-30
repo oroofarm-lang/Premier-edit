@@ -9,6 +9,9 @@ const DEFAULT_FPS = 25;
 const DEFAULT_WIDTH = 1080;
 const DEFAULT_HEIGHT = 1920;
 
+/** Audio-only crossfade overlap at each internal join, in seconds. */
+const AUDIO_CROSSFADE_SEC = 0.15;
+
 /** All words across every segment of an asset's transcript, in one flat, time-sorted list. */
 function wordsForAsset(transcriptSegmentsJson: string | undefined): TranscriptWord[] {
   if (!transcriptSegmentsJson) return [];
@@ -72,6 +75,8 @@ export async function buildCutTimeline(projectId: string): Promise<CutTimeline> 
       hasAudio: asset.sampleRate !== null || asset.kind === "AUDIO",
       sourceInSec,
       sourceOutSec,
+      audioInSec: sourceInSec,
+      audioOutSec: sourceOutSec,
       timelineStartSec: playhead,
       timelineEndSec: playhead + length,
       sourceDurationSec: asset.durationSec ?? length,
@@ -81,6 +86,23 @@ export async function buildCutTimeline(projectId: string): Promise<CutTimeline> 
     });
 
     playhead += length;
+  }
+
+  // Widen each internal join's audio range into real, bounded source
+  // footage so a crossfade transition has material to blend from — see
+  // CutClip.audioInSec/audioOutSec.
+  for (let i = 0; i < clips.length - 1; i++) {
+    const current = clips[i];
+    const next = clips[i + 1];
+    if (!current.hasAudio || !next.hasAudio) continue;
+    const halfOverlap = AUDIO_CROSSFADE_SEC / 2;
+    // Clamped to each clip's own real duration — this is reaching into footage
+    // that actually exists on disk, never manufacturing frames that don't.
+    current.audioOutSec = Math.min(
+      current.sourceDurationSec,
+      current.sourceOutSec + halfOverlap,
+    );
+    next.audioInSec = Math.max(0, next.sourceInSec - halfOverlap);
   }
 
   return {
