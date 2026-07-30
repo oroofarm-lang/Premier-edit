@@ -1,6 +1,7 @@
 import path from "node:path";
 import { prisma } from "@/lib/db";
 import { snapToWordBoundary } from "./snap";
+import { resolveVideoOverride } from "./video-override";
 import type { CutClip, CutTimeline } from "./types";
 import type { TranscriptWord } from "@/lib/transcription/types";
 
@@ -33,7 +34,10 @@ export async function buildCutTimeline(projectId: string): Promise<CutTimeline> 
     include: {
       selections: {
         orderBy: { order: "asc" },
-        include: { mediaAsset: { include: { transcript: true } } },
+        include: {
+          mediaAsset: { include: { transcript: true } },
+          videoAsset: true,
+        },
       },
     },
   });
@@ -68,6 +72,24 @@ export async function buildCutTimeline(projectId: string): Promise<CutTimeline> 
       : snapped.endSec;
     const length = sourceOutSec - sourceInSec;
 
+    // The model picked this footage for how it looks, not for how long it is —
+    // fit it to the audio it has to cover, or drop it if the clip is too short.
+    const overrideAsset = selection.videoAsset;
+    const fitted =
+      overrideAsset &&
+      selection.videoStartSec !== null &&
+      selection.videoEndSec !== null &&
+      overrideAsset.durationSec !== null
+        ? resolveVideoOverride(
+            {
+              startSec: selection.videoStartSec,
+              endSec: selection.videoEndSec,
+              sourceDurationSec: overrideAsset.durationSec,
+            },
+            length,
+          )
+        : null;
+
     clips.push({
       filePath: asset.filePath,
       fileName: path.basename(asset.filePath),
@@ -83,6 +105,16 @@ export async function buildCutTimeline(projectId: string): Promise<CutTimeline> 
       fps: asset.fps,
       width: asset.width,
       height: asset.height,
+      ...(fitted && overrideAsset
+        ? {
+            videoOverride: {
+              filePath: overrideAsset.filePath,
+              fileName: path.basename(overrideAsset.filePath),
+              sourceInSec: fitted.startSec,
+              sourceOutSec: fitted.endSec,
+            },
+          }
+        : {}),
     });
 
     playhead += length;

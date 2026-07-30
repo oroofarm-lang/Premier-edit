@@ -34,6 +34,19 @@ export type CutClip = {
   fps: number | null;
   width: number | null;
   height: number | null;
+  /**
+   * Footage to place on the video track instead of this clip's own, when the
+   * moment's picture and sound deliberately come from different sources
+   * (B-roll cutaway). Every other field above still describes the audio side.
+   * Already fitted to this clip's duration by resolveVideoOverride, so the
+   * timeline position is unchanged either way.
+   */
+  videoOverride?: {
+    filePath: string;
+    fileName: string;
+    sourceInSec: number;
+    sourceOutSec: number;
+  };
 };
 
 export type CutTimeline = {
