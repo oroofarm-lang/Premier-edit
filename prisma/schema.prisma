@@ -67,7 +67,8 @@ model MediaAsset {
 
   transcript      Transcript?
   visualAnalysis  VisualAnalysis?
-  selections      Selection[]
+  selections      Selection[]      @relation("SelectionSource")
+  videoForSelections Selection[]   @relation("SelectionVideoOverride")
 }
 
 model Transcript {
@@ -101,7 +102,7 @@ model Selection {
   id           String      @id @default(cuid())
   project      Project     @relation(fields: [projectId], references: [id])
   projectId    String
-  mediaAsset   MediaAsset  @relation(fields: [mediaAssetId], references: [id])
+  mediaAsset   MediaAsset  @relation("SelectionSource", fields: [mediaAssetId], references: [id])
   mediaAssetId String
   startSec     Float
   endSec       Float
@@ -109,6 +110,14 @@ model Selection {
   score        Float?
   reason       String?
   createdAt    DateTime    @default(now())
+
+  // Set only when this moment shows a different clip's footage than the one
+  // carrying its audio (B-roll cutaway). Null means video comes from
+  // mediaAsset, exactly as it always has.
+  videoAsset    MediaAsset? @relation("SelectionVideoOverride", fields: [videoAssetId], references: [id])
+  videoAssetId  String?
+  videoStartSec Float?
+  videoEndSec   Float?
 }
 
 model Timeline {
