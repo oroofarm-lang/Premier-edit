@@ -98,12 +98,23 @@ async function onLoadPlan() {
     }
 
     showBlock("plan-block", true);
-    document.getElementById("build-button").disabled = plan.clips.length === 0;
-    setStatus(
-      plan.clips.length === 0
-        ? "That project has no approved selections yet."
-        : "Plan loaded. Review it, then Build sequence.",
-    );
+
+    const missing = plan.missingSources ?? [];
+    const buildable = plan.clips.length > 0 && missing.length === 0;
+    document.getElementById("build-button").disabled = !buildable;
+
+    if (missing.length > 0) {
+      setStatus(
+        `${missing.length} source file(s) are missing from disk — cannot build.`,
+      );
+      for (const filePath of missing) log(`Missing: ${filePath}`);
+    } else {
+      setStatus(
+        plan.clips.length === 0
+          ? "That project has no approved selections yet."
+          : "Plan loaded. Review it, then Build sequence.",
+      );
+    }
   } catch (err) {
     setStatus(`Could not load plan: ${err.message}`);
   }

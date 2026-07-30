@@ -1,3 +1,4 @@
+import { access } from "node:fs/promises";
 import { NextResponse } from "next/server";
 import { buildCutTimeline } from "@/lib/cut/build";
 
@@ -14,7 +15,24 @@ export async function GET(
 ) {
   try {
     const timeline = await buildCutTimeline(params.id);
-    return NextResponse.json(timeline);
+
+    // Footage can be moved or renamed long after ingest recorded its path.
+    // Reporting it here lets the panel refuse to build rather than importing
+    // half the sources and leaving a broken sequence behind.
+    const paths = [...new Set(timeline.clips.map((c) => c.filePath))];
+    const checks = await Promise.all(
+      paths.map(async (p) => {
+        try {
+          await access(p);
+          return null;
+        } catch {
+          return p;
+        }
+      }),
+    );
+    const missingSources = checks.filter((p): p is string => p !== null);
+
+    return NextResponse.json({ ...timeline, missingSources });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const notFound = message.includes("No Project found");
