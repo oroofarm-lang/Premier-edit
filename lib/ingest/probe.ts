@@ -71,7 +71,12 @@ export async function probeMediaFile(filePath: string): Promise<ProbeResult> {
     durationSec,
     width: video?.width ?? null,
     height: video?.height ?? null,
-    fps: parseFrameRate(video?.avg_frame_rate ?? video?.r_frame_rate),
+    // r_frame_rate is the container's declared nominal rate (e.g. exactly
+    // 50/1). avg_frame_rate is computed from frame count / duration and comes
+    // out slightly off for almost every real file (e.g. 13300/267 = 49.81 for
+    // footage that is actually a clean 50fps) — using it here would tag every
+    // clip with a fractional rate and wrongly trip the FCP7 NTSC flag.
+    fps: parseFrameRate(video?.r_frame_rate ?? video?.avg_frame_rate),
     codec: video?.codec_name ?? audio?.codec_name ?? null,
     sampleRate: parseNumber(audio?.sample_rate),
     channels: audio?.channels ?? null,

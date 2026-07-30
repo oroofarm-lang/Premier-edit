@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
-import { withExtractedAudio } from "./extract-audio";
+import { withExtractedAudio, withExtractedAudioMany } from "./extract-audio";
 import type {
   TranscribeOptions,
   Transcriber,
+  TranscriptionOutcome,
   TranscriptionResult,
 } from "./types";
 
@@ -35,21 +36,62 @@ export class LocalWhisperTranscriber implements Transcriber {
     mediaFilePath: string,
     options: TranscribeOptions = {},
   ): Promise<TranscriptionResult> {
-    return withExtractedAudio(mediaFilePath, (wavPath) =>
-      this.runPython(wavPath, options),
-    );
+    return withExtractedAudio(mediaFilePath, async (wavPath) => {
+      const [raw] = await this.runPython([wavPath], options);
+      return this.toResult(raw);
+    });
   }
 
+  /**
+   * Transcribes many files in one model load. Extraction still happens per
+   * file (cheap), but the python process — and the ~10s weight load that
+   * dominates a short clip's runtime — is shared across the whole batch.
+   */
+  async transcribeMany(
+    mediaFilePaths: string[],
+    options: TranscribeOptions = {},
+  ): Promise<TranscriptionOutcome[]> {
+    if (mediaFilePaths.length === 0) return [];
+
+    return withExtractedAudioMany(mediaFilePaths, async (wavPaths) => {
+      const rawResults = await this.runPython(wavPaths, options);
+      return rawResults.map((raw, i) => {
+        const filePath = mediaFilePaths[i];
+        if ("error" in raw) {
+          return { filePath, ok: false, error: raw.error };
+        }
+        return { filePath, ok: true, result: this.toResult(raw) };
+      });
+    });
+  }
+
+  private toResult(raw: RawWhisperResult): TranscriptionResult {
+    if ("error" in raw) {
+      throw new Error(raw.error);
+    }
+    return {
+      engine: this.name,
+      language: raw.language,
+      text: raw.text,
+      segments: raw.segments.map((s) => ({
+        startSec: s.start,
+        endSec: s.end,
+        text: s.text,
+      })),
+    };
+  }
+
+  /** Spawns one python process covering every path in `wavPaths`, in order. */
   private runPython(
-    wavPath: string,
+    wavPaths: string[],
     options: TranscribeOptions,
-  ): Promise<TranscriptionResult> {
+  ): Promise<RawWhisperResult[]> {
     const language = options.language ?? "he";
 
     return new Promise((resolve, reject) => {
       const child = spawn(VENV_PYTHON, [
         SCRIPT,
-        wavPath,
+        ...wavPaths,
         "--model", this.model,
         "--language", language,
         "--model-dir", MODEL_DIR,
@@ -87,19 +129,7 @@ export class LocalWhisperTranscriber implements Transcriber {
         }
 
         try {
-          const parsed = JSON.parse(stdout);
-          resolve({
-            engine: this.name,
-            language: parsed.language,
-            text: parsed.text,
-            segments: parsed.segments.map(
-              (s: { start: number; end: number; text: string }) => ({
-                startSec: s.start,
-                endSec: s.end,
-                text: s.text,
-              }),
-            ),
-          });
+          resolve(JSON.parse(stdout));
         } catch (error) {
           reject(
             new Error(
@@ -113,3 +143,14 @@ export class LocalWhisperTranscriber implements Transcriber {
     });
   }
 }
+
+type RawWhisperResult =
+  | {
+      path: string;
+      language: string;
+      languageProbability: number;
+      durationSec: number;
+      text: string;
+      segments: { start: number; end: number; text: string }[];
+    }
+  | { path: string; error: string };
