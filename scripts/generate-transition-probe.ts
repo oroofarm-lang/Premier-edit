@@ -17,7 +17,10 @@ if (!clipAPath || !clipBPath) {
   process.exit(1);
 }
 
-const FPS = 25;
+const FPS = 50; // must match the real source clips' native frame rate — a
+// declared rate that doesn't match the actual media's fps is exactly the
+// bug documented in CLAUDE.md for lib/export/fcp7.ts (sequenceFps vs
+// sourceFps); this probe was hardcoding 25 while the real test clips are 50.
 const CLIP_SEC = 3;
 const OVERLAP_SEC = 0.5; // half-second transition, easy to see and hear on import
 
