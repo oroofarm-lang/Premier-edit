@@ -17,7 +17,7 @@ const MODEL = "claude-sonnet-5";
 const SHORTLIST_MULTIPLE = 4;
 const MAX_SHORTLIST = 60;
 
-type LlmChoice = { index: number; score: number; reason: string };
+type LlmChoice = { index: number; score: number; reason: string; beat: string };
 
 function buildPrompt(
   request: SelectionRequest,
@@ -46,29 +46,48 @@ ${SOCIAL_EDITING_GUIDELINES}
 רשימת המועמדים (מספר # הוא המזהה שאתה מחזיר):
 ${items}
 
+לפני שאתה בוחר, תכנן: מה הפרמיסה של הסרטון במשפט אחד, ומה מבנה הביטים
+(לדוגמה: הוק, גוף, סיום) שאתה מתכוון לבנות מהם.
+
 רק את המועמדים שאתה בפועל בוחר לקאט הסופי — לא צריך לחוות דעה על כולם.
-"reason" חייב להיות קצר: עד 12 מילים, לא משפט מלא.
+לכל מועמד שנבחר ציין גם "beat" — איזה חלק מהמבנה שתכננת הוא ממלא (למשל
+"הוק", "גוף", "סיום"). "reason" חייב להיות קצר: עד 12 מילים, לא משפט מלא.
 
 החזר אך ורק JSON תקין בפורמט הבא, בלי שום טקסט לפני או אחרי:
 {
+  "premise": "משפט אחד שמתאר את הרעיון המרכזי של הסרטון",
+  "beatPlan": ["הוק", "גוף", "סיום"],
   "selections": [
-    { "index": 0, "score": 0.9, "reason": "עד 12 מילים — תפקיד בסיפור, הוק/גוף/סיום" }
+    { "index": 0, "score": 0.9, "beat": "הוק", "reason": "עד 12 מילים — למה זה ההוק" }
   ]
 }
-הסדר במערך הוא סדר ההופעה בקאט הסופי.`;
+הסדר במערך selections הוא סדר ההופעה בקאט הסופי.`;
 }
 
-function parseChoices(text: string): LlmChoice[] {
+type LlmPlan = {
+  premise: string;
+  beatPlan: string[];
+  choices: LlmChoice[];
+};
+
+function parsePlan(text: string): LlmPlan {
   const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   const parsed = JSON.parse(cleaned);
   if (!Array.isArray(parsed.selections)) {
     throw new Error("LLM selection response missing a 'selections' array.");
   }
-  return parsed.selections.map((s: { index: unknown; score: unknown; reason: unknown }) => ({
-    index: Number(s.index),
-    score: Number(s.score),
-    reason: String(s.reason ?? ""),
-  }));
+  return {
+    premise: String(parsed.premise ?? ""),
+    beatPlan: Array.isArray(parsed.beatPlan) ? parsed.beatPlan.map(String) : [],
+    choices: parsed.selections.map(
+      (s: { index: unknown; score: unknown; reason: unknown; beat: unknown }) => ({
+        index: Number(s.index),
+        score: Number(s.score),
+        reason: String(s.reason ?? ""),
+        beat: String(s.beat ?? ""),
+      }),
+    ),
+  };
 }
 
 /**
@@ -114,7 +133,8 @@ export class LlmContentSelector implements ContentSelector {
         "LLM selection response was cut off at the token limit before finishing its JSON.",
       );
     }
-    const choices = parseChoices(textBlock.text);
+    const plan = parsePlan(textBlock.text);
+    const choices = plan.choices;
 
     // Defensive budget cap: the model is asked to respect targetDurationSec
     // but isn't guaranteed to — stop once the running total goes over rather
