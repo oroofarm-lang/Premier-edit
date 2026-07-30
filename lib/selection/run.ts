@@ -110,6 +110,9 @@ export async function runContentSelection(
         order: s.order,
         score: s.score,
         reason: s.reason,
+        videoAssetId: s.videoOverride?.mediaAssetId ?? null,
+        videoStartSec: s.videoOverride?.startSec ?? null,
+        videoEndSec: s.videoOverride?.endSec ?? null,
       })),
     }),
   ]);
