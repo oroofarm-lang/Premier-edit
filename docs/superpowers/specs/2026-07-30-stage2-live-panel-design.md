@@ -67,6 +67,33 @@ Chat Edit (arbitrary natural-language commands against a live timeline) is AutoE
 - Any MCP server / ExtendScript bridge — direct UXP only
 - Packaging/distributing the panel outside this machine's dev-mode install
 
+## Agent decomposition (added 2026-07-30, after an 8-agent architecture proposal)
+
+A later proposal in the same session laid out an 8-agent architecture (Orchestrator, Ingest/Proxy, STT+Alignment, Context/Semantic, Creative Editor, QC/Safety, Timeline Execution, Documentation/Git). It was written against a hypothetical Python/FastAPI backend that **does not exist in this repo** — the only `.py` file here is `scripts/transcribe.py`, a thin faster-whisper helper the TypeScript pipeline shells out to. The user chose to adapt the proposal into the existing TypeScript stack rather than stand up a second service.
+
+Two of its assumptions were rejected on purpose:
+- **No Python/FastAPI backend.** Everything stays in the Next.js app's `lib/`. Adding a second service in a second language to re-host logic that already exists and has been reviewed would contradict the proposal's own "do not re-create existing working logic" directive.
+- **No cloud STT.** The proposal specified WhisperX/Deepgram. This project chose local faster-whisper deliberately so client footage never leaves the machine (see `CLAUDE.md` open decision #1, resolved after real Hebrew testing). That guarantee stays.
+
+What the proposal is genuinely useful for is **naming the boundaries** — most of these responsibilities already exist as modules; the agent framing mostly confirms the decomposition is right, and surfaces two real gaps.
+
+| Proposed agent | Status in this codebase |
+|---|---|
+| 1. Orchestrator | Partly exists as the pipeline's stage runners (`lib/*/run.ts`) + the approval-checkpoint flow. No separate router module needed; the 3-checkpoint UI *is* the orchestration surface. |
+| 2. Ingest & Media Proxy | Exists: `lib/ingest/probe.ts` (ffprobe metadata, rotation/frame-rate handling). Proxy generation is not built and not currently needed. |
+| 3. STT & Word-Level Alignment | Exists: `scripts/transcribe.py` + `lib/transcription/*`, with word-level timestamps added by the `editing-quality` branch (Tasks 2-5). **Gap: filler-word and silence-gap detection are not built** — see below. |
+| 4. Context & Semantic Analysis | Exists in effect: `lib/vision/*` (visual understanding) + the LLM selector's narrative-beat plan (Tasks 8-10). Topic segmentation as a separate step is not built. |
+| 5. Creative Editor | Exists: `lib/selection/llm-selector.ts` — produces the cut plan from a brief, with a stated premise/beat structure and validation. `apply_editing_style(preset)` is not built (`StylePreference` exists in the schema, unused). |
+| 6. QC & Safety | Partly exists: the handle-frame reservation and word-boundary snapping from the `editing-quality` branch are exactly this agent's `apply_word_padding` and anti-truncation role. **Gap: `merge_adjacent_ranges` (micro-cut prevention) and explicit timecode-bounds validation are not built** — see below. |
+| 7. Timeline Execution | **This is the subject of this spec.** Currently FCP7 XML export (`lib/export/fcp7.ts`); becomes direct UXP execution. The proposal's `duplicate_active_sequence()` (non-destructive backup) and `export_fallback_edl_xml()` (fall back to file export when the DOM path fails) are both good ideas worth adopting — the fallback in particular means the XML path stays as a safety net rather than being deleted. |
+| 8. Documentation & Git Sync | Exists informally: the Obsidian vault at `Volt/` is already maintained with a progress log, and commits already carry descriptive messages. Automating per-edit logs is plausible later; auto-committing on every edit is **not** adopted (silent automatic commits on a shared repo are the kind of hard-to-reverse action that should stay a human decision). |
+
+**Two real gaps worth adding to the roadmap** (not to this spec's v1 scope, which stays as written above):
+- **Filler-word / silence-gap detection** (proposed agent 3). This is AutoEdit's headline feature and this project has no equivalent. Word-level timestamps — just landed on the `editing-quality` branch — are the prerequisite, so this is now unblocked and is the strongest candidate for the next feature after Stage 2.
+- **Micro-cut merging + timecode-bounds validation** (proposed agent 6). Cheap to add, guards a real failure mode (a plan with two kept ranges 40ms apart produces a stutter, not an edit). Belongs in `lib/cut/build.ts` alongside the handle-frame logic.
+
 ## Sequencing
 
-This is new, separate work from the in-flight `editing-quality` branch (word-boundary cuts, audio crossfades, editorial rubric — currently at Task 7a, pending final Premiere verification, with Tasks 8-11 still queued). Recommendation: land `editing-quality` first — its output (`CutClip[]` with `audioInSec`/`audioOutSec`) is exactly what this panel will consume, so finishing it first means the panel is built against the final shape of that type, not a moving target. This spec is written now, while the research is fresh, so it's ready to go straight to `writing-plans` once `editing-quality` merges.
+This is new, separate work from the in-flight `editing-quality` branch (word-boundary cuts, audio crossfades, editorial rubric). Recommendation: land `editing-quality` first — its output (`CutClip[]` with `audioInSec`/`audioOutSec`) is exactly what this panel will consume, so finishing it first means the panel is built against the final shape of that type, not a moving target. This spec is written now, while the research is fresh, so it's ready to go straight to `writing-plans` once `editing-quality` merges.
+
+Roadmap order after this spec: **(1)** finish `editing-quality`, **(2)** Stage 2 UXP panel per this spec, **(3)** filler-word/silence detection, **(4)** micro-cut merging + bounds validation (could fold into 1 or 3 if convenient).
