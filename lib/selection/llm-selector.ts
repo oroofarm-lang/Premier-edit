@@ -17,6 +17,9 @@ const MODEL = "claude-sonnet-5";
 const SHORTLIST_MULTIPLE = 4;
 const MAX_SHORTLIST = 60;
 
+/** Covers the model's reasoning plus the JSON plan — see requestPlan. */
+const MAX_RESPONSE_TOKENS = 16000;
+
 type LlmChoice = {
   index: number;
   score: number;
@@ -60,14 +63,16 @@ ${items}
 לכל מועמד שנבחר ציין גם "beat" — איזה חלק מהמבנה שתכננת הוא ממלא (למשל
 "הוק", "גוף", "סיום"). "reason" חייב להיות קצר: עד 12 מילים, לא משפט מלא.
 
-הפרדה בין אודיו לווידאו (B-roll): הסיפור נבנה בשני ערוצים — מה שנשמע ומה
-שנראה — והם לא חייבים להגיע מאותו קליפ. אם הדיבור של רגע מסוים חזק אבל
-התמונה שלו חלשה (למשל דובר סטטי מול המצלמה), ורגע אחר שאתה כבר בוחר מציע
-תמונה טובה יותר לאותו ביט — הוסף לרגע החלש "videoFrom" עם המספר # של אותו
-רגע אחר. האודיו יישאר של הרגע המקורי, רק התמונה תוחלף. כללים:
+הפרדה בין אודיו לווידאו (B-roll) — חלק מהתכנון, לא תוספת: הסיפור נבנה בשני
+ערוצים במקביל, מה שנשמע ומה שנראה, והם לא חייבים להגיע מאותו קליפ. עבור על
+הרגעים שבחרת ושאל לגבי כל אחד: התיאור החזותי שלו באמת מעניין לצפייה לאורך
+כל הקטע, או שיש רגע אחר שכבר בחרת עם תמונה חזקה יותר לאותו ביט? רגע ארוך
+של הסבר מדובר הוא המועמד הקלאסי — הדיבור נשאר, אבל במקום לראות מישהו מדבר
+רואים את מה שהוא מתאר. במקרה כזה הוסף לאותו רגע "videoFrom" עם המספר # של
+הרגע שממנו תילקח התמונה. האודיו תמיד נשאר של הרגע המקורי. כללים:
 - "videoFrom" חייב להצביע על רגע שאתה בוחר בפועל ברשימת selections.
 - אסור להצביע על רגע שיש לו בעצמו "videoFrom".
-- ברירת המחדל היא בלי השדה הזה. השתמש בו רק כשזה באמת משפר.
+- זה כלי עריכה, לא חובה על כל רגע — השתמש בו איפה שהוא באמת משפר את הצפייה.
 
 החזר אך ורק JSON תקין בפורמט הבא, בלי שום טקסט לפני או אחרי:
 {
@@ -283,13 +288,20 @@ export class LlmContentSelector implements ContentSelector {
   private async requestPlan(prompt: string): Promise<LlmPlan> {
     const message = await this.client.messages.create({
       model: MODEL,
-      max_tokens: 4096,
+      // Generous because the budget covers the model's own reasoning as well
+      // as the JSON. At 4096 a deliberative prompt could spend the entire
+      // allowance thinking and return a response with no text block at all —
+      // observed, not theoretical.
+      max_tokens: MAX_RESPONSE_TOKENS,
       messages: [{ role: "user", content: prompt }],
     });
 
     const textBlock = message.content.find((block) => block.type === "text");
     if (!textBlock || textBlock.type !== "text") {
-      throw new Error("LLM selection response contained no text block.");
+      throw new Error(
+        `LLM selection response contained no text block. ` +
+          `stop_reason=${message.stop_reason}, blocks=[${message.content.map((b) => b.type).join(",")}]`,
+      );
     }
     if (message.stop_reason === "max_tokens") {
       throw new Error(
