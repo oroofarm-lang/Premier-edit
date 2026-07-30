@@ -50,7 +50,12 @@ function clipItemXml(
   mediaType: "video" | "audio",
   definedFiles: Set<string>,
 ): string {
-  const { fps } = timeline;
+  // Two different clocks are in play. <start>/<end> place the clip on the
+  // timeline, so they count sequence frames. <in>/<out> point into the source
+  // file, so they count that file's OWN frames — mixing the two is how a cut
+  // that looks right in the XML ends up pulling the wrong footage.
+  const sequenceFps = timeline.fps;
+  const sourceFps = clip.fps ?? timeline.fps;
   const id = `clipitem-${mediaType}-${index + 1}`;
   const fileId = `file-${index + 1}`;
   const name = escapeXml(clip.fileName);
@@ -59,12 +64,12 @@ function clipItemXml(
     `          <clipitem id="${id}">`,
     `            <name>${name}</name>`,
     `            <enabled>TRUE</enabled>`,
-    `            <duration>${toFrames(clip.sourceDurationSec, fps)}</duration>`,
-    rateXml(fps, "            "),
-    `            <start>${toFrames(clip.timelineStartSec, fps)}</start>`,
-    `            <end>${toFrames(clip.timelineEndSec, fps)}</end>`,
-    `            <in>${toFrames(clip.sourceInSec, fps)}</in>`,
-    `            <out>${toFrames(clip.sourceOutSec, fps)}</out>`,
+    `            <duration>${toFrames(clip.sourceDurationSec, sourceFps)}</duration>`,
+    rateXml(sourceFps, "            "),
+    `            <start>${toFrames(clip.timelineStartSec, sequenceFps)}</start>`,
+    `            <end>${toFrames(clip.timelineEndSec, sequenceFps)}</end>`,
+    `            <in>${toFrames(clip.sourceInSec, sourceFps)}</in>`,
+    `            <out>${toFrames(clip.sourceOutSec, sourceFps)}</out>`,
   ];
 
   // A <file> is defined in full exactly once, then referenced by id. The
@@ -78,8 +83,8 @@ function clipItemXml(
       `            <file id="${fileId}">`,
       `              <name>${name}</name>`,
       `              <pathurl>${escapeXml(toFileUrl(clip.filePath))}</pathurl>`,
-      rateXml(fps, "              "),
-      `              <duration>${toFrames(clip.sourceDurationSec, fps)}</duration>`,
+      rateXml(sourceFps, "              "),
+      `              <duration>${toFrames(clip.sourceDurationSec, sourceFps)}</duration>`,
       `              <media>`,
     );
     if (clip.hasVideo) {

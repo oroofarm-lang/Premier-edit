@@ -12,6 +12,13 @@ export type CutClip = {
   timelineEndSec: number;
   /** Full source duration, needed by the XML file reference. */
   sourceDurationSec: number;
+  /**
+   * The source's own frame rate, which is NOT necessarily the sequence rate —
+   * a phone clip at 30fps and a camera clip at 25fps can sit in one cut. Source
+   * in/out points are expressed in the source's frames, so exporting them at the
+   * sequence rate would read the wrong part of the file. Null for audio-only.
+   */
+  fps: number | null;
   width: number | null;
   height: number | null;
 };

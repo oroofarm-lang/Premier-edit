@@ -56,6 +56,7 @@ export async function buildCutTimeline(projectId: string): Promise<CutTimeline> 
       timelineStartSec: playhead,
       timelineEndSec: playhead + length,
       sourceDurationSec: asset.durationSec ?? length,
+      fps: asset.fps,
       width: asset.width,
       height: asset.height,
     });

@@ -55,3 +55,6 @@ next-env.d.ts
 
 # Exported timelines (generated artifacts)
 /exports
+
+# Generated test media (TTS Hebrew samples — regenerable, not source)
+/test-media
