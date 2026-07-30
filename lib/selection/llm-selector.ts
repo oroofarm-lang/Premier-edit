@@ -70,6 +70,51 @@ type LlmPlan = {
   choices: LlmChoice[];
 };
 
+/** How many seconds into the cut the hook must land, per the researched
+ * short-form guidelines already used elsewhere in this prompt. */
+const HOOK_WINDOW_SEC = 3;
+/** How many times the same source clip may appear before a plan is rejected —
+ * this is the exact "reused one long clip four times" failure that motivated
+ * building the LLM selector in the first place (see CLAUDE.md). */
+const MAX_REUSE_PER_ASSET = 2;
+
+export function validatePlan(
+  plan: LlmPlan,
+  shortlist: CandidateSegment[],
+): { ok: true } | { ok: false; reason: string } {
+  if (plan.choices.length === 0) {
+    return { ok: false, reason: "The plan selected no clips." };
+  }
+
+  const first = shortlist[plan.choices[0].index];
+  if (!first) {
+    return { ok: false, reason: `Choice at index ${plan.choices[0].index} does not exist in the shortlist.` };
+  }
+  const firstDuration = first.endSec - first.startSec;
+  if (firstDuration > HOOK_WINDOW_SEC) {
+    return {
+      ok: false,
+      reason: `The opening clip is ${firstDuration.toFixed(1)}s, longer than the ${HOOK_WINDOW_SEC}s hook window — the hook must land fast.`,
+    };
+  }
+
+  const usesByAsset = new Map<string, number>();
+  for (const choice of plan.choices) {
+    const candidate = shortlist[choice.index];
+    if (!candidate) continue;
+    const count = (usesByAsset.get(candidate.mediaAssetId) ?? 0) + 1;
+    usesByAsset.set(candidate.mediaAssetId, count);
+    if (count > MAX_REUSE_PER_ASSET) {
+      return {
+        ok: false,
+        reason: `Media asset ${candidate.mediaAssetId} is used ${count} times, more than the ${MAX_REUSE_PER_ASSET}-use diversity limit.`,
+      };
+    }
+  }
+
+  return { ok: true };
+}
+
 function parsePlan(text: string): LlmPlan {
   const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   const parsed = JSON.parse(cleaned);
