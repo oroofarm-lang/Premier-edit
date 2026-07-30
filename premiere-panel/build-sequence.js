@@ -81,67 +81,98 @@ async function ensureMediaImported(project, plan, log) {
  * and its audio — there is no video-only or audio-only variant — so the way to
  * end up with one source's picture over another's sound is to send the unwanted
  * halves to tracks nobody reads, then sweep them. */
-const SCRATCH_VIDEO_TRACK = 1;
-const SCRATCH_AUDIO_TRACK = 1;
+// Deliberately well clear of the tracks the cut itself uses: a stereo source
+// dropped into a sequence with mono tracks occupies TWO audio tracks, so a
+// scratch index of 1 lands on the second channel of the real audio and
+// silently destroys it. Observed in Premiere, not theoretical.
+const SCRATCH_VIDEO_TRACK = 2;
+const SCRATCH_AUDIO_TRACK = 4;
 
 /** Trims a project item to an in/out range, so the following overwrite edit
- * inserts exactly the chosen moment rather than the whole file. */
-function setInOut(project, clipItem, inSec, outSec, label) {
-  project.lockedAccess(() => {
-    project.executeTransaction((compoundAction) => {
-      compoundAction.addAction(
-        clipItem.createSetInOutPointsAction(
-          ppro.TickTime.createWithSeconds(inSec),
-          ppro.TickTime.createWithSeconds(outSec),
-        ),
-      );
-    }, label);
-  });
+ * inserts exactly the chosen moment rather than the whole file.
+ *
+ * Setting in/out is the one call that needs the ClipProjectItem cast; the
+ * overwrite edit below takes the raw ProjectItem and rejects the cast one
+ * with "Invalid parameter" (matches Adobe's own samples). */
+function setInOut(project, projectItem, inSec, outSec, label) {
+  const clipItem = ppro.ClipProjectItem.cast(projectItem);
+  try {
+    project.lockedAccess(() => {
+      project.executeTransaction((compoundAction) => {
+        compoundAction.addAction(
+          clipItem.createSetInOutPointsAction(
+            ppro.TickTime.createWithSeconds(inSec),
+            ppro.TickTime.createWithSeconds(outSec),
+          ),
+        );
+      }, label);
+    });
+  } catch (err) {
+    throw new Error(`setInOut(${inSec}→${outSec}) failed [${label}]: ${err.message}`);
+  }
 }
 
 function overwriteAt(project, editor, clipItem, atSec, videoTrack, audioTrack, label) {
-  project.lockedAccess(() => {
-    project.executeTransaction((compoundAction) => {
-      compoundAction.addAction(
-        editor.createOverwriteItemAction(
-          clipItem,
-          ppro.TickTime.createWithSeconds(atSec),
-          videoTrack,
-          audioTrack,
-        ),
-      );
-    }, label);
-  });
+  try {
+    project.lockedAccess(() => {
+      project.executeTransaction((compoundAction) => {
+        compoundAction.addAction(
+          editor.createOverwriteItemAction(
+            clipItem,
+            ppro.TickTime.createWithSeconds(atSec),
+            videoTrack,
+            audioTrack,
+          ),
+        );
+      }, label);
+    });
+  } catch (err) {
+    throw new Error(
+      `overwrite at ${atSec}s on V${videoTrack + 1}/A${audioTrack + 1} failed [${label}]: ${err.message}`,
+    );
+  }
 }
 
 /** Empties the scratch tracks left behind by B-roll placements. Ripple is
  * false throughout — removing these must not shift anything already placed. */
-async function clearScratchTracks(project, sequence, editor, log) {
+async function clearScratchTracks(project, log) {
+  // Re-fetch rather than reusing the handles from placement: after a run of
+  // transactions the earlier sequence/editor objects go stale and every call
+  // on them fails with "The script object is no longer valid."
+  const sequence = await project.getActiveSequence();
+  if (!sequence) return;
+  const editor = ppro.SequenceEditor.getEditor(sequence);
+
   const passes = [
     { track: await sequence.getVideoTrack(SCRATCH_VIDEO_TRACK), mediaType: ppro.Constants.MediaType.VIDEO },
+    // Both channels: a stereo source on mono tracks occupies this one and the next.
     { track: await sequence.getAudioTrack(SCRATCH_AUDIO_TRACK), mediaType: ppro.Constants.MediaType.AUDIO },
+    { track: await sequence.getAudioTrack(SCRATCH_AUDIO_TRACK + 1), mediaType: ppro.Constants.MediaType.AUDIO },
   ];
 
+  let cleared = 0;
   for (const { track, mediaType } of passes) {
     if (!track) continue;
     const items = await track.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
     if (items.length === 0) continue;
 
-    let selection;
-    ppro.TrackItemSelection.createEmptySelection((s) => {
-      selection = s;
+    // The selection is only valid inside the callback it is handed to —
+    // holding onto it and using it afterwards fails with "The script object
+    // is no longer valid", so the removal happens in here too.
+    ppro.TrackItemSelection.createEmptySelection((selection) => {
+      for (const item of items) selection.addItem(item, true);
+      project.lockedAccess(() => {
+        project.executeTransaction((compoundAction) => {
+          compoundAction.addAction(
+            editor.createRemoveItemsAction(selection, false, mediaType, false),
+          );
+        }, "clear scratch track");
+      });
     });
-    for (const item of items) selection.addItem(item, true);
-
-    project.lockedAccess(() => {
-      project.executeTransaction((compoundAction) => {
-        compoundAction.addAction(
-          editor.createRemoveItemsAction(selection, false, mediaType, false),
-        );
-      }, "clear scratch track");
-    });
-    log(`Cleared ${items.length} leftover item(s) from a scratch track`);
+    cleared += items.length;
   }
+
+  if (cleared > 0) log(`Cleared ${cleared} leftover item(s) from the scratch tracks`);
 }
 
 /**
@@ -159,7 +190,7 @@ async function placeClips(project, sequence, plan, mediaByName, log) {
 
   for (let i = 0; i < plan.clips.length; i++) {
     const clip = plan.clips[i];
-    const clipItem = ppro.ClipProjectItem.cast(mediaByName.get(clip.fileName));
+    const clipItem = mediaByName.get(clip.fileName);
     const at = clip.timelineStartSec;
 
     // The same ProjectItem gets re-trimmed per placement, which is why a clip
@@ -176,7 +207,7 @@ async function placeClips(project, sequence, plan, mediaByName, log) {
     overwriteAt(project, editor, clipItem, at, SCRATCH_VIDEO_TRACK, 0, `place audio of ${clip.fileName} at ${at}s`);
 
     // Picture from the B-roll; its audio goes to the scratch track.
-    const overrideItem = ppro.ClipProjectItem.cast(mediaByName.get(clip.videoOverride.fileName));
+    const overrideItem = mediaByName.get(clip.videoOverride.fileName);
     setInOut(
       project,
       overrideItem,
@@ -190,7 +221,16 @@ async function placeClips(project, sequence, plan, mediaByName, log) {
     log(`Placed ${i + 1}/${plan.clips.length}: ${clip.fileName} (picture from ${clip.videoOverride.fileName})`);
   }
 
-  if (usedScratch) await clearScratchTracks(project, sequence, editor, log);
+  // Cleanup is cosmetic — the cut itself is already correct on V1/A1. A
+  // failure here should leave the user with a usable sequence and a warning,
+  // not throw away a good build.
+  if (usedScratch) {
+    try {
+      await clearScratchTracks(project, log);
+    } catch (err) {
+      log(`Warning: could not clear the scratch tracks (${err.message}). Delete V${SCRATCH_VIDEO_TRACK + 1} and A${SCRATCH_AUDIO_TRACK + 1}+ by hand.`);
+    }
+  }
 }
 
 async function buildSequence(projectId, log) {
@@ -203,12 +243,17 @@ async function buildSequence(projectId, log) {
   const mediaByName = await ensureMediaImported(project, plan, log);
 
   const sequenceName = `${plan.name} (Premier Edit)`;
-  const sequence = await project.createSequence(sequenceName);
-  if (!sequence) throw new Error("createSequence returned nothing");
+  const created = await project.createSequence(sequenceName);
+  if (!created) throw new Error("createSequence returned nothing");
   log(`Created sequence "${sequenceName}"`);
 
+  // The editor writes to the sequence Premiere currently has open — Adobe's own
+  // samples all edit getActiveSequence(). Placing into a freshly created but
+  // unopened sequence fails with "Invalid parameter" on the first overwrite.
+  await project.openSequence(created);
+  const sequence = (await project.getActiveSequence()) ?? created;
+
   await placeClips(project, sequence, plan, mediaByName, log);
-  await project.openSequence(sequence);
 
   return { sequenceName, clips: plan.clips.length };
 }
