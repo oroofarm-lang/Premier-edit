@@ -795,6 +795,14 @@ git commit -m "Add FCP7 transition-import probe script"
 
 ## Task 7a: Audio crossfade at cut boundaries (run only if Task 6's answer was "transitions survived")
 
+**Revised after a second human checkpoint.** The first version of this task (audio-only `<transitionitem>`, no handle frames, `effectid=Constant Power`) was probe-tested for real: even after fixing an unrelated FPS bug, Premiere showed a hard cut to black instead of a dissolve. Root-caused by driving Premiere directly (computer-use) to build a manually-created Cross Dissolve + Constant Power edit, exporting *that* as FCP7 XML, and diffing it against our probe's output. Three concrete defects found, all fixed in this revised task:
+
+1. Whichever edge of a `<clipitem>` touches a `<transitionitem>` must literally be `-1`, not a computed frame number — Premiere uses that sentinel to know the transition governs that boundary.
+2. Both clips need real spare source footage past their intended cut point for the transition to draw blend material from (Premiere's own UI hit "Insufficient media, transition will contain repeated frames" when we recreated this without spare footage — confirms it's load-bearing, not cosmetic).
+3. The real FCP7 effect id for what Premiere's UI calls "Constant Power" is `KGAudioTransCrossFade3dB` / name `Cross Fade (+3dB)` — not `Constant Power`, which isn't a real id.
+
+Video and audio transitions are independent in this format (separate `<video>`/`<audio>` tracks, each with their own `<transitionitem>`), which is why this stays audio-only per the user's scope decision without touching a single video clipitem.
+
 **Files:**
 - Modify: `lib/cut/types.ts` (`CutClip`)
 - Modify: `lib/cut/build.ts`
@@ -802,7 +810,7 @@ git commit -m "Add FCP7 transition-import probe script"
 
 **Interfaces:**
 - Consumes: nothing new from other tasks.
-- Produces: `CutClip` gains `audioInSec`/`audioOutSec` (the video's `sourceInSec`/`sourceOutSec` stay the visible cut point; the audio range is intentionally wider, feeding into transition overlap). No change to `buildCutTimeline`'s or `buildFcp7Xml`'s exported function signatures.
+- Produces: `CutClip` gains `audioInSec`/`audioOutSec` (the video's `sourceInSec`/`sourceOutSec` stay the visible cut point; the audio range is intentionally wider — real source footage reserved as a handle for the transition to blend from). No change to `buildCutTimeline`'s or `buildFcp7Xml`'s exported function signatures.
 
 - [ ] **Step 1: Add audio-specific in/out to `CutClip`**
 
@@ -813,15 +821,18 @@ In `lib/cut/types.ts`, add to `CutClip` (near the existing `sourceInSec`/`source
  * Audio-only in/out, in source seconds. Deliberately wider than
  * sourceInSec/sourceOutSec by half the crossfade overlap on each side that
  * has a neighbor — the video cut stays exactly where selection put it, only
- * the audio track overlaps into the adjacent clip so a crossfade has
- * material to blend. Equal to sourceInSec/sourceOutSec for a clip with no
- * neighbor on that side (first clip's start, last clip's end).
+ * the audio track reaches into real, not-otherwise-used source footage so a
+ * crossfade transition has material to blend (confirmed against a real
+ * Premiere-exported reference file: a transition with no spare footage on
+ * either side just produces a hard cut, not a dissolve). Equal to
+ * sourceInSec/sourceOutSec for a clip with no neighbor on that side (first
+ * clip's start, last clip's end).
  */
 audioInSec: number;
 audioOutSec: number;
 ```
 
-- [ ] **Step 2: Compute the overlap in `buildCutTimeline`**
+- [ ] **Step 2: Reserve the handle footage in `buildCutTimeline`**
 
 In `lib/cut/build.ts`, add a constant near the top:
 
@@ -830,13 +841,23 @@ In `lib/cut/build.ts`, add a constant near the top:
 const AUDIO_CROSSFADE_SEC = 0.15;
 ```
 
-After the full `clips` array is built (i.e., after the `for` loop that pushes every clip finishes, still inside `buildCutTimeline`), widen each internal join's audio range:
+Initialize `audioInSec`/`audioOutSec` to match `sourceInSec`/`sourceOutSec` when each clip is first pushed (in the `clips.push({...})` call from Task 5, add these two lines to the pushed object):
+
+```ts
+audioInSec: sourceInSec,
+audioOutSec: sourceOutSec,
+```
+
+After the full `clips` array is built (i.e., after the `for` loop that pushes every clip finishes, still inside `buildCutTimeline`), widen each internal join's audio range into real, bounded source footage:
 
 ```ts
 for (let i = 0; i < clips.length - 1; i++) {
   const current = clips[i];
   const next = clips[i + 1];
+  if (!current.hasAudio || !next.hasAudio) continue;
   const halfOverlap = AUDIO_CROSSFADE_SEC / 2;
+  // Clamped to each clip's own real duration — this is reaching into footage
+  // that actually exists on disk, never manufacturing frames that don't.
   current.audioOutSec = Math.min(
     current.sourceDurationSec,
     current.sourceOutSec + halfOverlap,
@@ -845,45 +866,62 @@ for (let i = 0; i < clips.length - 1; i++) {
 }
 ```
 
-And initialize `audioInSec`/`audioOutSec` to match `sourceInSec`/`sourceOutSec` when each clip is first pushed (in the `clips.push({...})` call from Task 5, add these two lines to the pushed object):
-
-```ts
-audioInSec: sourceInSec,
-audioOutSec: sourceOutSec,
-```
-
 - [ ] **Step 3: Emit the audio crossfade transitions in the export**
 
-In `lib/export/fcp7.ts`, the audio clipitem must use `clip.audioInSec`/`clip.audioOutSec` instead of `clip.sourceInSec`/`clip.sourceOutSec` when `mediaType === "audio"`. In `clipItemXml`, change the `<in>`/`<out>` lines to branch on `mediaType`:
+In `lib/export/fcp7.ts`, three changes to `clipItemXml`: use the audio-specific in/out, and support writing the `-1` sentinel on whichever timeline edge touches a transition.
+
+Change the function signature to accept an optional edges parameter:
 
 ```ts
-const inSec = mediaType === "audio" ? clip.audioInSec : clip.sourceInSec;
-const outSec = mediaType === "audio" ? clip.audioOutSec : clip.sourceOutSec;
+function clipItemXml(
+  clip: CutClip,
+  index: number,
+  timeline: CutTimeline,
+  mediaType: "video" | "audio",
+  definedFiles: Set<string>,
+  edges: { startIsTransition?: boolean; endIsTransition?: boolean } = {},
+): string {
 ```
 
-and use `inSec`/`outSec` in place of `clip.sourceInSec`/`clip.sourceOutSec` in the `<in>`/`<out>` lines a few lines below.
-
-Then, after building `audioClips` in `buildFcp7Xml`, insert a `<transitionitem>` (Constant Power, matching the probe from Task 6) between every pair of adjacent audio clipitems. Add this helper next to `clipItemXml`:
+Replace the `<in>`/`<out>` lines to branch on `mediaType` (audio uses the wider, handle-inclusive range from Step 2; video is untouched):
 
 ```ts
-function audioTransitionXml(
-  clip: CutClip,
-  timeline: CutTimeline,
-): string {
-  const sequenceFps = timeline.fps;
-  const start = toFrames(clip.timelineEndSec, sequenceFps) - toFrames(AUDIO_CROSSFADE_SEC_EXPORT, sequenceFps);
-  const end = toFrames(clip.timelineEndSec, sequenceFps);
+  const inSec = mediaType === "audio" ? clip.audioInSec : clip.sourceInSec;
+  const outSec = mediaType === "audio" ? clip.audioOutSec : clip.sourceOutSec;
+```
+
+And replace the `<start>`/`<end>`/`<in>`/`<out>` lines inside the `lines` array with:
+
+```ts
+    `            <start>${edges.startIsTransition ? "-1" : toFrames(clip.timelineStartSec, sequenceFps)}</start>`,
+    `            <end>${edges.endIsTransition ? "-1" : toFrames(clip.timelineEndSec, sequenceFps)}</end>`,
+    `            <in>${toFrames(inSec, sourceFps)}</in>`,
+    `            <out>${toFrames(outSec, sourceFps)}</out>`,
+```
+
+Add this helper next to `clipItemXml` — the transitionitem sits centered on the original cutpoint (matches Premiere's own default "center" alignment, confirmed against the reference export):
+
+```ts
+/**
+ * Must match lib/cut/build.ts's AUDIO_CROSSFADE_SEC — kept as a separate
+ * constant because the export module shouldn't import an internal constant
+ * from the cut-building module, but the two values are load-bearing together.
+ */
+const AUDIO_CROSSFADE_SEC_EXPORT = 0.15;
+
+function audioTransitionXml(cutpointSec: number, sequenceFps: number): string {
+  const halfFrames = toFrames(AUDIO_CROSSFADE_SEC_EXPORT / 2, sequenceFps);
+  const cutFrame = toFrames(cutpointSec, sequenceFps);
   return [
     `          <transitionitem>`,
-    `            <name>Constant Power</name>`,
-    `            <effectid>Constant Power</effectid>`,
-    `            <start>${start}</start>`,
-    `            <end>${end}</end>`,
-    `            <alignment>end</alignment>`,
+    `            <start>${cutFrame - halfFrames}</start>`,
+    `            <end>${cutFrame + halfFrames}</end>`,
+    `            <alignment>center</alignment>`,
     `            <effect>`,
-    `              <name>Constant Power</name>`,
-    `              <effectid>Constant Power</effectid>`,
-    `              <effectcategory>Crossfade</effectcategory>`,
+    // "Constant Power" is only the label Premiere's UI shows — the real FCP7
+    // effect id, confirmed against a Premiere-exported reference file, is this:
+    `              <name>Cross Fade (+3dB)</name>`,
+    `              <effectid>KGAudioTransCrossFade3dB</effectid>`,
     `              <effecttype>transition</effecttype>`,
     `              <mediatype>audio</mediatype>`,
     `            </effect>`,
@@ -892,27 +930,39 @@ function audioTransitionXml(
 }
 ```
 
-Add `const AUDIO_CROSSFADE_SEC_EXPORT = 0.15;` near the top of `fcp7.ts` (kept as a separate constant from `build.ts`'s `AUDIO_CROSSFADE_SEC` — they must match in value, but the export module shouldn't import an internal constant from the cut-building module; note this duplication explicitly in a comment on both constants pointing at each other).
-
-In `buildFcp7Xml`, interleave a transition between clips that both have audio and are timeline-adjacent:
+In `buildFcp7Xml`, replace the existing `audioClips` construction with a version that tracks adjacency on both sides so it can mark the touching edges and splice in a transition:
 
 ```ts
+const audioIndexed = timeline.clips
+  .map((clip, index) => ({ clip, index }))
+  .filter(({ clip }) => clip.hasAudio);
+
 const audioClips: string[] = [];
-timeline.clips.forEach((clip, index) => {
-  if (!clip.hasAudio) return;
-  audioClips.push(clipItemXml(clip, index, timeline, "audio", definedFiles));
-  const next = timeline.clips[index + 1];
-  if (next?.hasAudio && next.timelineStartSec === clip.timelineEndSec) {
-    audioClips.push(audioTransitionXml(clip, timeline));
+audioIndexed.forEach(({ clip, index }, i) => {
+  const prevEntry = audioIndexed[i - 1];
+  const nextEntry = audioIndexed[i + 1];
+  const touchesPrevTransition =
+    prevEntry !== undefined && prevEntry.clip.timelineEndSec === clip.timelineStartSec;
+  const touchesNextTransition =
+    nextEntry !== undefined && nextEntry.clip.timelineStartSec === clip.timelineEndSec;
+
+  audioClips.push(
+    clipItemXml(clip, index, timeline, "audio", definedFiles, {
+      startIsTransition: touchesPrevTransition,
+      endIsTransition: touchesNextTransition,
+    }),
+  );
+  if (touchesNextTransition) {
+    audioClips.push(audioTransitionXml(clip.timelineEndSec, timeline.fps));
   }
 });
 ```
 
-(This replaces the existing `.map(...).filter(...)` construction of `audioClips` — same output type, `string[]`, just built with a loop instead of map/filter so a transition can be spliced in after each clip.)
+(This replaces the existing `.map(...).filter(...)` construction of `audioClips` — same output type, `string[]`. The `videoClips` construction and its call to `clipItemXml` are untouched — pass no `edges` argument there, so it defaults to `{}` and behaves exactly as before.)
 
-- [ ] **Step 4: Verify well-formed XML on the real project**
+- [ ] **Step 4: Verify well-formed XML on the real project, then re-import into Premiere**
 
-Run the export against the חליטת תה project (via the app's existing UI action) and confirm the resulting `.xml` in `./exports/` is well-formed (open it, or run it through any XML parser) and that every internal join's audio track has a `<transitionitem>` between two `<clipitem>`s. Then re-import into Premiere and confirm the crossfade is audible — this is the same manual check as Task 6, just against a real multi-clip export instead of the 2-clip probe.
+Run the export against the חליטת תה project (via the app's existing UI action) and confirm the resulting `.xml` in `./exports/` is well-formed (open it, or run it through any XML parser), that every internal audio join has a `<transitionitem>` between two `<clipitem>`s, and that the clipitem edge touching each transition literally reads `<start>-1</start>` or `<end>-1</end>` (not a frame number). Then re-import into Premiere and confirm the crossfade is audible — do not consider this task done on XML well-formedness alone, since that's exactly what the first (broken) version of this task also produced. This is the same manual check as Task 6, just against a real multi-clip export instead of the 2-clip probe, and it is the check that actually caught the original bug.
 
 - [ ] **Step 5: Commit**
 
