@@ -38,7 +38,7 @@ export default async function ProjectPage({
       checkpoints: { orderBy: { createdAt: "asc" } },
       selections: {
         orderBy: { order: "asc" },
-        include: { mediaAsset: true },
+        include: { mediaAsset: true, videoAsset: true },
       },
       editVersions: {
         orderBy: { versionNum: "desc" },
@@ -215,6 +215,15 @@ export default async function ProjectPage({
                       <p className="mt-1 text-xs text-muted-foreground">
                         {selection.reason}
                       </p>
+                      {selection.videoAsset && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          🎥 וידיאו מ:{" "}
+                          <span className="font-mono">
+                            {selection.videoAsset.filePath.split("/").pop()}
+                          </span>{" "}
+                          ({selection.videoStartSec}–{selection.videoEndSec}s)
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ol>
