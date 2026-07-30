@@ -163,22 +163,21 @@ export class LlmContentSelector implements ContentSelector {
     const shortlist = await this.buildShortlist(request);
     if (shortlist.length === 0) return [];
 
-    const message = await this.client.messages.create({
-      model: MODEL,
-      max_tokens: 4096,
-      messages: [{ role: "user", content: buildPrompt(request, shortlist) }],
-    });
+    const basePrompt = buildPrompt(request, shortlist);
+    let plan = await this.requestPlan(basePrompt);
+    let validation = validatePlan(plan, shortlist);
 
-    const textBlock = message.content.find((block) => block.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      throw new Error("LLM selection response contained no text block.");
+    if (!validation.ok) {
+      const retryPrompt = `${basePrompt}\n\nהניסיון הקודם שלך נדחה: ${validation.reason}\nתקן את התוכנית כך שתעמוד בכללים ונסה שוב.`;
+      plan = await this.requestPlan(retryPrompt);
+      validation = validatePlan(plan, shortlist);
+      if (!validation.ok) {
+        throw new Error(
+          `LLM selection plan failed validation twice in a row: ${validation.reason}`,
+        );
+      }
     }
-    if (message.stop_reason === "max_tokens") {
-      throw new Error(
-        "LLM selection response was cut off at the token limit before finishing its JSON.",
-      );
-    }
-    const plan = parsePlan(textBlock.text);
+
     const choices = plan.choices;
 
     // Defensive budget cap: the model is asked to respect targetDurationSec
@@ -202,8 +201,27 @@ export class LlmContentSelector implements ContentSelector {
       endSec: candidate.endSec,
       order,
       score: Math.max(0, Math.min(1, choice.score)),
-      reason: choice.reason || "נבחר על ידי מודל השפה",
+      reason: choice.reason ? `${choice.beat}: ${choice.reason}` : "נבחר על ידי מודל השפה",
     }));
+  }
+
+  private async requestPlan(prompt: string): Promise<LlmPlan> {
+    const message = await this.client.messages.create({
+      model: MODEL,
+      max_tokens: 4096,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const textBlock = message.content.find((block) => block.type === "text");
+    if (!textBlock || textBlock.type !== "text") {
+      throw new Error("LLM selection response contained no text block.");
+    }
+    if (message.stop_reason === "max_tokens") {
+      throw new Error(
+        "LLM selection response was cut off at the token limit before finishing its JSON.",
+      );
+    }
+    return parsePlan(textBlock.text);
   }
 
   private async buildShortlist(
