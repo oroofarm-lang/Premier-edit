@@ -24,6 +24,8 @@ type FfprobeStream = {
   sample_rate?: string;
   channels?: number;
   duration?: string;
+  side_data_list?: { side_data_type?: string; rotation?: number }[];
+  tags?: { rotate?: string };
 };
 
 type FfprobeOutput = {
@@ -44,6 +46,27 @@ function parseNumber(value: string | undefined): number | null {
   if (value === undefined) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Phones and cameras routinely store frames landscape and flag a 90/270°
+ * rotation to be applied at playback — every NLE (and QuickTime, and the
+ * phone itself) shows the clip upright, but the encoded width/height are
+ * still landscape. Reading width/height straight off the stream without
+ * checking this is how a vertical shoot ends up in a horizontal sequence.
+ */
+function parseRotationDegrees(video: FfprobeStream | undefined): number {
+  const displayMatrix = video?.side_data_list?.find(
+    (s) => s.side_data_type === "Display Matrix" && typeof s.rotation === "number",
+  );
+  if (displayMatrix) return displayMatrix.rotation as number;
+  const tagRotate = Number(video?.tags?.rotate);
+  return Number.isFinite(tagRotate) ? tagRotate : 0;
+}
+
+function isQuarterTurn(rotationDegrees: number): boolean {
+  const normalized = ((rotationDegrees % 360) + 360) % 360;
+  return Math.abs(normalized - 90) < 1 || Math.abs(normalized - 270) < 1;
 }
 
 export async function probeMediaFile(filePath: string): Promise<ProbeResult> {
@@ -67,10 +90,14 @@ export async function probeMediaFile(filePath: string): Promise<ProbeResult> {
     parseNumber(video?.duration) ??
     parseNumber(audio?.duration);
 
+  const rotated = isQuarterTurn(parseRotationDegrees(video));
+  const rawWidth = video?.width ?? null;
+  const rawHeight = video?.height ?? null;
+
   return {
     durationSec,
-    width: video?.width ?? null,
-    height: video?.height ?? null,
+    width: rotated ? rawHeight : rawWidth,
+    height: rotated ? rawWidth : rawHeight,
     // r_frame_rate is the container's declared nominal rate (e.g. exactly
     // 50/1). avg_frame_rate is computed from frame count / duration and comes
     // out slightly off for almost every real file (e.g. 13300/267 = 49.81 for
