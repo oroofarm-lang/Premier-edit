@@ -9,23 +9,45 @@
     <sp-heading size="M">Premier Edit</sp-heading>
     <sp-body id="status">Connecting…</sp-body>
 
-    <div id="project-block" class="block" hidden>
+    <div id="premiere-block" class="block" hidden>
+      <sp-detail>Premiere</sp-detail>
+      <sp-body id="premiere-info"></sp-body>
+    </div>
+
+    <div class="block">
       <sp-detail>Project</sp-detail>
-      <sp-body id="project-name"></sp-body>
+      <sp-picker id="project-picker" placeholder="Loading projects…">
+        <sp-menu slot="options" id="project-options"></sp-menu>
+      </sp-picker>
     </div>
 
-    <div id="sequence-block" class="block" hidden>
-      <sp-detail>Active sequence</sp-detail>
-      <sp-body id="sequence-name"></sp-body>
+    <div id="plan-block" class="block" hidden>
+      <sp-detail>Approved cut plan</sp-detail>
+      <sp-body id="plan-summary"></sp-body>
+      <ul id="plan-list"></ul>
     </div>
 
-    <div id="clips-block" class="block" hidden>
-      <sp-detail>Video track 1 clips</sp-detail>
-      <ul id="clip-list"></ul>
+    <div class="actions">
+      <sp-button id="load-plan-button" variant="secondary">Load plan</sp-button>
+      <sp-button id="build-button" variant="accent" disabled>
+        Build sequence
+      </sp-button>
     </div>
 
-    <sp-button id="refresh-button" variant="secondary">Refresh</sp-button>
+    <dialog id="confirm-dialog">
+      <sp-heading size="S">Build sequence?</sp-heading>
+      <sp-divider size="medium"></sp-divider>
+      <sp-body id="confirm-text"></sp-body>
+      <sp-body class="muted">
+        This creates a new sequence and imports any missing source files. Your
+        existing sequences are not modified.
+      </sp-body>
+      <div class="actions">
+        <sp-button id="confirm-cancel" variant="secondary">Cancel</sp-button>
+        <sp-button id="confirm-ok" variant="accent">Build</sp-button>
+      </div>
+    </dialog>
 
-    <footer id="footer"></footer>
+    <ul id="log"></ul>
   </body>
 </html>

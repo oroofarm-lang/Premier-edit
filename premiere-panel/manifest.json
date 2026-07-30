@@ -10,6 +10,11 @@
     }
   ],
   "manifestVersion": 5,
+  "requiredPermissions": {
+    "network": {
+      "domains": ["http://localhost:3002"]
+    }
+  },
   "entrypoints": [
     {
       "type": "panel",

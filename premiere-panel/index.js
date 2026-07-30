@@ -1,92 +1,161 @@
 /**
- * Premier Edit — Stage 2 panel, walking skeleton.
+ * Premier Edit — Stage 2 panel.
  *
- * Confirms the UXP <-> Premiere connection is real by reading the active
- * project, active sequence, and video track 1's clips straight from the
- * Premiere DOM. No writes yet — this is Phase 1 of the Stage 2 panel
- * (docs/superpowers/specs/2026-07-30-stage2-live-panel-design.md):
- * read-only first, plan execution comes in a later phase.
+ * Phase 1 (read-only): shows what Premiere currently has open, proving the
+ * UXP connection works.
+ * Phase 2 (execution): fetches an approved cut plan from the local Next.js
+ * app and builds it into a new sequence, behind one confirmation.
+ *
+ * Design: docs/superpowers/specs/2026-07-30-stage2-live-panel-design.md
  */
 
 const ppro = require("premierepro");
+const { buildSequence, fetchProjects, fetchPlan, APP_ORIGIN } = require("./build-sequence");
+
+let loadedPlan = null;
+let loadedProjectId = null;
 
 function setStatus(text) {
   document.getElementById("status").textContent = text;
+}
+
+function log(text) {
+  const li = document.createElement("li");
+  li.textContent = text;
+  document.getElementById("log").appendChild(li);
 }
 
 function showBlock(id, visible) {
   document.getElementById(id).hidden = !visible;
 }
 
-async function listVideoTrackOneClips(sequence) {
-  const listEl = document.getElementById("clip-list");
-  listEl.innerHTML = "";
-
-  const trackCount = await sequence.getVideoTrackCount();
-  if (trackCount === 0) {
-    const li = document.createElement("li");
-    li.textContent = "(no video tracks)";
-    listEl.appendChild(li);
-    return;
+/** Phase 1: what does Premiere have open right now? */
+async function refreshPremiereState() {
+  const project = await ppro.Project.getActiveProject();
+  if (!project) {
+    document.getElementById("premiere-info").textContent = "No project open.";
+    showBlock("premiere-block", true);
+    return false;
   }
 
-  const track = await sequence.getVideoTrack(0);
-  const items = track.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
+  const sequence = await project.getActiveSequence();
+  const seqText = sequence
+    ? `sequence "${sequence.name}"`
+    : "no active sequence";
+  document.getElementById("premiere-info").textContent =
+    `${project.name} — ${seqText}`;
+  showBlock("premiere-block", true);
+  return true;
+}
 
-  if (items.length === 0) {
-    const li = document.createElement("li");
-    li.textContent = "(video track 1 is empty)";
-    listEl.appendChild(li);
-    return;
-  }
+async function loadProjectList() {
+  const picker = document.getElementById("project-picker");
+  const options = document.getElementById("project-options");
 
-  for (const item of items) {
-    const start = await item.getStartTime();
-    const end = await item.getEndTime();
-    const li = document.createElement("li");
-    li.textContent = `${item.name}  —  ${start.seconds.toFixed(2)}s to ${end.seconds.toFixed(2)}s`;
-    listEl.appendChild(li);
+  try {
+    const projects = await fetchProjects();
+    options.innerHTML = "";
+    for (const project of projects) {
+      const item = document.createElement("sp-menu-item");
+      item.textContent = project.name;
+      item.value = project.id;
+      options.appendChild(item);
+    }
+    picker.placeholder =
+      projects.length > 0 ? "Choose a project" : "No projects found";
+  } catch (err) {
+    picker.placeholder = "App not reachable";
+    log(`Could not reach ${APP_ORIGIN} — is the app running? (${err.message})`);
   }
 }
 
-async function refresh() {
-  setStatus("Reading active project…");
-  showBlock("project-block", false);
-  showBlock("sequence-block", false);
-  showBlock("clips-block", false);
+async function onLoadPlan() {
+  const projectId = document.getElementById("project-picker").value;
+  if (!projectId) {
+    setStatus("Pick a project first.");
+    return;
+  }
 
-  let project;
+  setStatus("Loading plan…");
+  document.getElementById("build-button").disabled = true;
+
   try {
-    project = await ppro.Project.getActiveProject();
+    const plan = await fetchPlan(projectId);
+    loadedPlan = plan;
+    loadedProjectId = projectId;
+
+    document.getElementById("plan-summary").textContent =
+      `${plan.clips.length} clips · ${plan.durationSec}s · ${plan.fps}fps · ${plan.width}×${plan.height}`;
+
+    const list = document.getElementById("plan-list");
+    list.innerHTML = "";
+    for (const clip of plan.clips) {
+      const li = document.createElement("li");
+      li.textContent =
+        `${clip.fileName}  ${clip.sourceInSec.toFixed(2)}→${clip.sourceOutSec.toFixed(2)}s` +
+        `  @ ${clip.timelineStartSec.toFixed(2)}s`;
+      list.appendChild(li);
+    }
+
+    showBlock("plan-block", true);
+    document.getElementById("build-button").disabled = plan.clips.length === 0;
+    setStatus(
+      plan.clips.length === 0
+        ? "That project has no approved selections yet."
+        : "Plan loaded. Review it, then Build sequence.",
+    );
   } catch (err) {
-    setStatus(`Error reading project: ${err}`);
-    return;
+    setStatus(`Could not load plan: ${err.message}`);
   }
+}
 
-  if (!project) {
-    setStatus("No project open in Premiere.");
-    return;
+async function onBuildClicked() {
+  if (!loadedPlan) return;
+
+  document.getElementById("confirm-text").textContent =
+    `Build ${loadedPlan.clips.length} clips into a new sequence ` +
+    `named "${loadedPlan.name} (Premier Edit)"?`;
+
+  await document.getElementById("confirm-dialog").uxpShowModal({
+    title: "Build sequence?",
+    size: { width: 380, height: 260 },
+  });
+}
+
+async function onConfirmed() {
+  document.getElementById("confirm-dialog").close();
+  document.getElementById("build-button").disabled = true;
+  setStatus("Building…");
+
+  try {
+    const result = await buildSequence(loadedProjectId, log);
+    setStatus(`Done — "${result.sequenceName}" with ${result.clips} clips.`);
+    await refreshPremiereState();
+  } catch (err) {
+    setStatus(`Build failed: ${err.message}`);
+    log(`Error: ${err.message}`);
+  } finally {
+    document.getElementById("build-button").disabled = false;
   }
-
-  document.getElementById("project-name").textContent = project.name;
-  showBlock("project-block", true);
-
-  const sequence = await project.getActiveSequence();
-  if (!sequence) {
-    setStatus("Project open, but no active sequence.");
-    return;
-  }
-
-  document.getElementById("sequence-name").textContent = sequence.name;
-  showBlock("sequence-block", true);
-
-  await listVideoTrackOneClips(sequence);
-  showBlock("clips-block", true);
-
-  setStatus("Connected.");
 }
 
 window.addEventListener("load", async () => {
-  document.getElementById("refresh-button").addEventListener("click", refresh);
-  await refresh();
+  document
+    .getElementById("load-plan-button")
+    .addEventListener("click", onLoadPlan);
+  document.getElementById("build-button").addEventListener("click", onBuildClicked);
+  document.getElementById("confirm-ok").addEventListener("click", onConfirmed);
+  document
+    .getElementById("confirm-cancel")
+    .addEventListener("click", () =>
+      document.getElementById("confirm-dialog").close(),
+    );
+
+  const hasProject = await refreshPremiereState();
+  await loadProjectList();
+  setStatus(
+    hasProject
+      ? "Ready. Pick a project and load its plan."
+      : "Open a project in Premiere to build into.",
+  );
 });

@@ -6,25 +6,39 @@ body {
 }
 
 .block {
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
-#clip-list {
-  margin: 4px 0 0 0;
-  padding-left: 18px;
-}
-
-#clip-list li {
-  font-size: 12px;
-  margin-bottom: 2px;
-}
-
-#refresh-button {
+.actions {
+  display: flex;
+  gap: 8px;
   margin-top: 14px;
 }
 
-#footer {
-  margin-top: 10px;
-  font-size: 10px;
-  opacity: 0.6;
+#plan-list,
+#log {
+  margin: 6px 0 0 0;
+  padding-left: 18px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+#plan-list li,
+#log li {
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+#log {
+  margin-top: 12px;
+  opacity: 0.7;
+}
+
+.muted {
+  opacity: 0.7;
+  font-size: 11px;
+}
+
+#project-picker {
+  width: 100%;
 }
