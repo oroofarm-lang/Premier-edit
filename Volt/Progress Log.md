@@ -11,6 +11,13 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-07-31 — Panel loaded into real Premiere for the first time this session; found and fixed a scroll-clipping bug
+
+- **The manifest path was the actual blocker for "it doesn't show up in UXP."** `premiere-panel/` only exists inside `.worktrees/stage2-panel/` — a dot-prefixed folder, hidden by default in macOS Finder and in native Open dialogs. The user was browsing from the repo root and the folder simply wasn't visible. Fixed by pointing the UXP Developer Tool's Add Plugin dialog straight at the full path via `Cmd+Shift+G`. Once added, the panel loaded and appeared under Window → UXP Plugins as expected.
+- **Two previously-flagged unknowns are now confirmed working, live, not just in theory:** the project `sp-picker`'s `change` event does fire (this was an open question in `Volt/Decisions and Open Questions.md` since the panel-parity work), and the "Active cut" / "Refine this cut" blocks correctly populated after picking a project.
+- **A real bug found from the user's own screenshots, not by reading code:** `premiere-panel/styles.css`'s `body` had no height or overflow constraint. UXP's panel webview does not provide ambient document scrolling the way a normal browser tab does, so once the profile chips + moment list + refine block + plan list were all visible at once, content taller than the docked panel was silently **clipped with no scrollbar at all** — hiding the Build sequence button entirely, which looked like "the plugin doesn't work" from the user's side. Fixed with explicit `height: 100%` + `overflow-y: auto` (+ `box-sizing: border-box`) on `html`/`body`. Commit `cf81992` on `stage2-panel`, pushed.
+- **Verified:** `tsc --noEmit` clean, 46/46 tests. Browser-based verification of the CSS itself was attempted but proved unreliable — the preview tool renders files outside the main project folder as static snapshots, so `getComputedStyle` didn't reflect the live stylesheet. Fell back to direct source/cssRules inspection to confirm the fix is syntactically correct. **The actual scroll behavior inside Premiere is still the user's own next check**, same standing limitation as every other panel change this session.
+
 ## 2026-07-31 — RTL reverted same day: user decided to keep the product English/LTR
 
 - Immediately after the RTL work below shipped and was verified, the user said it was a mistake and asked to keep everything in English and LTR instead.
