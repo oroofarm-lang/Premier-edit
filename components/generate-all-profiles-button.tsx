@@ -11,7 +11,6 @@ export function GenerateAllProfilesButton({ projectId }: { projectId: string }) 
   return (
     <Button
       size="sm"
-      dir="ltr"
       variant="outline"
       disabled={pending}
       className={pending ? "shadow-glow" : undefined}
