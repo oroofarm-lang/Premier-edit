@@ -11,9 +11,21 @@
 
 const ppro = require("premierepro");
 const { buildSequence, fetchProjects, fetchPlan, APP_ORIGIN } = require("./build-sequence");
+const { fetchState, applyProfile, sendRefinement, applyDraft, discardDraft } = require("./state");
 
 let loadedPlan = null;
 let loadedProjectId = null;
+// Separate from loadedProjectId above: this tracks which project's cut is
+// currently displayed for viewing/refining, independent of whether its plan
+// has been "Loaded" for the build flow.
+let pickedProjectId = null;
+
+const PROFILE_LABELS = {
+  REEL_SHORT: "Reel / Short",
+  SOCIAL_POST: "Social post",
+  YOUTUBE_LONG: "YouTube long-form",
+};
+const DIFF_LABEL = { kept: "kept", removed: "removed", added: "added", moved: "moved" };
 
 function setStatus(text, { loading = false, error = false } = {}) {
   document.getElementById("status-text").textContent = text;
@@ -153,6 +165,196 @@ async function onConfirmed() {
   }
 }
 
+/** Any of the four mutating actions below (or picking a different project) can change what an already-loaded build plan would build — force an explicit re-"Load plan" rather than silently refreshing it. */
+function clearLoadedPlan() {
+  loadedPlan = null;
+  loadedProjectId = null;
+  showBlock("plan-block", false);
+  document.getElementById("build-button").disabled = true;
+}
+
+function renderSelectionList(ulId, selections) {
+  const ul = document.getElementById(ulId);
+  ul.innerHTML = "";
+  selections.forEach((s, i) => {
+    const li = document.createElement("li");
+    li.setAttribute("dir", "auto");
+    let text = `${i + 1}. ${s.fileName}  ${s.startSec.toFixed(2)}–${s.endSec.toFixed(2)}s`;
+    if (s.videoFileName) text += `  🎥 ${s.videoFileName}`;
+    li.textContent = text;
+    ul.appendChild(li);
+  });
+}
+
+function renderProfileChips(state) {
+  const container = document.getElementById("profile-chips");
+  container.innerHTML = "";
+  const previewByProfile = new Map(state.profilePreviews.map((p) => [p.outputProfile, p]));
+  for (const profile of ["REEL_SHORT", "SOCIAL_POST", "YOUTUBE_LONG"]) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = PROFILE_LABELS[profile];
+    const isActive = state.outputProfile === profile;
+    const hasPreview = previewByProfile.has(profile);
+    btn.className = "chip" + (isActive ? " active" : "");
+    btn.disabled = isActive || !hasPreview;
+    if (!isActive && hasPreview) {
+      btn.addEventListener("click", () => onApplyProfile(profile));
+    }
+    container.appendChild(btn);
+  }
+}
+
+function renderRefineChips(count) {
+  const container = document.getElementById("refine-chips");
+  container.innerHTML = "";
+  for (let i = 1; i <= count; i++) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "chip";
+    btn.textContent = String(i);
+    btn.addEventListener("click", () => {
+      const ta = document.getElementById("refine-input");
+      const prefix = ta.value ? `${ta.value.trimEnd()} ` : "";
+      ta.value = `${prefix}רגע ${i}: `;
+      ta.focus();
+    });
+    container.appendChild(btn);
+  }
+}
+
+function renderTurns(turns) {
+  const ul = document.getElementById("refine-turns");
+  ul.innerHTML = "";
+  for (const t of turns) {
+    const li = document.createElement("li");
+    li.className = t.ok ? "turn-ok" : "turn-error";
+    li.setAttribute("dir", "auto");
+    li.textContent = `${t.ok ? "✓" : "✕"} ${t.instruction} — ${t.response}`;
+    ul.appendChild(li);
+  }
+}
+
+function renderDraft(draft) {
+  const block = document.getElementById("draft-block");
+  if (!draft) {
+    block.hidden = true;
+    return;
+  }
+  block.hidden = false;
+  document.getElementById("draft-summary").textContent =
+    `${draft.selections.length} moments · ${draft.totalDurationSec}s` +
+    (draft.premise ? ` · ${draft.premise}` : "");
+  const ul = document.getElementById("draft-diff");
+  ul.innerHTML = "";
+  for (const d of draft.diff) {
+    const li = document.createElement("li");
+    li.className = `diff-${d.status}`;
+    li.setAttribute("dir", "auto");
+    li.textContent = `${DIFF_LABEL[d.status]} · ${d.fileName} · ${d.startSec}–${d.endSec}s`;
+    ul.appendChild(li);
+  }
+}
+
+/** Fetches and renders the active cut + refinement conversation for whichever project is picked. Hides both blocks if that project has no approved cut yet. */
+async function loadState(projectId) {
+  try {
+    const state = await fetchState(projectId);
+
+    if (state.selections.length === 0) {
+      showBlock("cut-block", false);
+      showBlock("refine-block", false);
+      return;
+    }
+
+    showBlock("cut-block", true);
+    renderProfileChips(state);
+    document.getElementById("cut-premise").textContent = state.premise ? `💡 ${state.premise}` : "";
+    renderSelectionList("cut-list", state.selections);
+
+    if (!state.canRefine) {
+      showBlock("refine-block", false);
+      return;
+    }
+    showBlock("refine-block", true);
+    renderRefineChips(state.selections.length);
+    renderTurns(state.refinementDraft ? state.refinementDraft.turns : []);
+    renderDraft(state.refinementDraft);
+  } catch (err) {
+    log(`Could not load cut state: ${err.message}`);
+    showBlock("cut-block", false);
+    showBlock("refine-block", false);
+  }
+}
+
+async function onProjectSelected() {
+  const projectId = document.getElementById("project-picker").value;
+  clearLoadedPlan();
+  pickedProjectId = projectId || null;
+  if (!pickedProjectId) {
+    showBlock("cut-block", false);
+    showBlock("refine-block", false);
+    return;
+  }
+  await loadState(pickedProjectId);
+}
+
+async function onApplyProfile(outputProfile) {
+  if (!pickedProjectId) return;
+  setStatus(`Switching to ${PROFILE_LABELS[outputProfile]}…`, { loading: true });
+  try {
+    await applyProfile(pickedProjectId, outputProfile);
+    clearLoadedPlan();
+    await loadState(pickedProjectId);
+    setStatus(`Switched to ${PROFILE_LABELS[outputProfile]}.`);
+  } catch (err) {
+    setStatus(`Could not switch profile: ${err.message}`, { error: true });
+  }
+}
+
+async function onSendRefinement() {
+  const input = document.getElementById("refine-input");
+  const instruction = input.value.trim();
+  if (!instruction || !pickedProjectId) return;
+
+  const sendButton = document.getElementById("refine-send-button");
+  sendButton.disabled = true;
+  setStatus("Refining…", { loading: true });
+  try {
+    await sendRefinement(pickedProjectId, instruction);
+    input.value = "";
+    await loadState(pickedProjectId);
+    setStatus("Ready.");
+  } catch (err) {
+    setStatus(`Refinement failed: ${err.message}`, { error: true });
+  } finally {
+    sendButton.disabled = false;
+  }
+}
+
+async function onApplyDraft() {
+  if (!pickedProjectId) return;
+  setStatus("Applying refinement…", { loading: true });
+  try {
+    await applyDraft(pickedProjectId);
+    clearLoadedPlan();
+    await loadState(pickedProjectId);
+    setStatus("Applied.");
+  } catch (err) {
+    setStatus(`Could not apply: ${err.message}`, { error: true });
+  }
+}
+
+async function onDiscardDraft() {
+  if (!pickedProjectId) return;
+  try {
+    await discardDraft(pickedProjectId);
+    await loadState(pickedProjectId);
+  } catch (err) {
+    setStatus(`Could not discard: ${err.message}`, { error: true });
+  }
+}
+
 window.addEventListener("load", async () => {
   document
     .getElementById("load-plan-button")
@@ -164,6 +366,20 @@ window.addEventListener("load", async () => {
     .addEventListener("click", () =>
       document.getElementById("confirm-dialog").close(),
     );
+
+  document.getElementById("project-picker").addEventListener("change", onProjectSelected);
+  document
+    .getElementById("refine-send-button")
+    .addEventListener("click", onSendRefinement);
+  document.getElementById("draft-apply-button").addEventListener("click", onApplyDraft);
+  document.getElementById("draft-discard-button").addEventListener("click", onDiscardDraft);
+  document.getElementById("refine-input").addEventListener("keydown", (e) => {
+    // Enter sends; Shift+Enter for a newline — same convention as the web app.
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      onSendRefinement();
+    }
+  });
 
   const hasProject = await refreshPremiereState();
   await loadProjectList();

@@ -35,7 +35,7 @@ export async function GET(
     return NextResponse.json({ ...timeline, missingSources });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const notFound = message.includes("No Project found");
+    const notFound = message.includes("No record was found for a query");
     return NextResponse.json(
       { error: message },
       { status: notFound ? 404 : 500 },

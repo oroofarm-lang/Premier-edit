@@ -21,6 +21,38 @@
       </sp-picker>
     </div>
 
+    <div id="cut-block" class="block" hidden>
+      <sp-detail>Active cut</sp-detail>
+      <div id="profile-chips" class="chip-row"></div>
+      <sp-body id="cut-premise" class="muted" dir="auto"></sp-body>
+      <ul id="cut-list"></ul>
+    </div>
+
+    <div id="refine-block" class="block" hidden>
+      <sp-detail>Refine this cut</sp-detail>
+      <div id="refine-chips" class="chip-row"></div>
+      <textarea
+        id="refine-input"
+        dir="auto"
+        rows="2"
+        placeholder="מה לשנות בקאט?"
+      ></textarea>
+      <div class="actions">
+        <sp-button id="refine-send-button" variant="secondary">Send</sp-button>
+      </div>
+      <ul id="refine-turns"></ul>
+
+      <div id="draft-block" hidden>
+        <sp-detail>Proposed version</sp-detail>
+        <sp-body id="draft-summary"></sp-body>
+        <ul id="draft-diff"></ul>
+        <div class="actions">
+          <sp-button id="draft-apply-button" variant="accent">Apply</sp-button>
+          <sp-button id="draft-discard-button" variant="secondary">Discard</sp-button>
+        </div>
+      </div>
+    </div>
+
     <div id="plan-block" class="block" hidden>
       <sp-detail>Approved cut plan</sp-detail>
       <sp-body id="plan-summary"></sp-body>

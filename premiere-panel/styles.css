@@ -92,3 +92,95 @@ body {
 .spinner[hidden] {
   display: none;
 }
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.chip {
+  font: inherit;
+  font-size: 11px;
+  color: var(--cosmic-text);
+  background-color: var(--cosmic-surface);
+  border: 1px solid var(--cosmic-border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.chip:hover:not(:disabled) {
+  border-color: var(--cosmic-violet);
+}
+
+.chip.active {
+  background-color: var(--cosmic-violet);
+  border-color: var(--cosmic-violet);
+  color: var(--cosmic-text);
+}
+
+.chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#refine-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--cosmic-text);
+  background-color: var(--cosmic-surface);
+  border: 1px solid var(--cosmic-border);
+  border-radius: 6px;
+  resize: vertical;
+}
+
+#refine-input:focus {
+  outline: none;
+  border-color: var(--cosmic-violet);
+}
+
+#refine-turns li {
+  font-size: 11px;
+}
+
+.turn-ok {
+  color: var(--cosmic-muted);
+}
+
+.turn-error {
+  color: var(--cosmic-red);
+}
+
+#draft-block {
+  margin-top: 10px;
+  padding: 8px;
+  background-color: var(--cosmic-surface);
+  border: 1px solid var(--cosmic-border);
+  border-radius: 6px;
+}
+
+#draft-diff li {
+  font-size: 11px;
+}
+
+.diff-kept {
+  color: var(--cosmic-muted);
+}
+
+.diff-added {
+  color: var(--cosmic-green);
+}
+
+.diff-removed {
+  color: var(--cosmic-red);
+}
+
+.diff-moved {
+  color: var(--cosmic-cyan);
+}
