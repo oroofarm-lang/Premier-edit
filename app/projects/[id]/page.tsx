@@ -7,7 +7,11 @@ import { IngestButton } from "@/components/ingest-button";
 import { ApproveCheckpointButton } from "@/components/approve-checkpoint-button";
 import { TranscribeButton } from "@/components/transcribe-button";
 import { SelectContentButton } from "@/components/select-content-button";
+import { GenerateAllProfilesButton } from "@/components/generate-all-profiles-button";
+import { ApplyProfileButton } from "@/components/apply-profile-button";
 import { ExportButton } from "@/components/export-button";
+import { PROFILE_LABELS } from "@/lib/selection/types";
+import type { ProfilePreview } from "@/lib/selection/run";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +42,15 @@ function parseShortlist(json: string | null): ShortlistEntry[] {
   if (!json) return [];
   try {
     return JSON.parse(json) as ShortlistEntry[];
+  } catch {
+    return [];
+  }
+}
+
+function parseProfilePreviews(json: string | null): ProfilePreview[] {
+  if (!json) return [];
+  try {
+    return JSON.parse(json) as ProfilePreview[];
   } catch {
     return [];
   }
@@ -90,6 +103,7 @@ export default async function ProjectPage({
   const consideredNotChosen = shortlist
     .filter((c) => c.chosenOrder === null)
     .sort((a, b) => a.filePath.localeCompare(b.filePath) || a.startSec - b.startSec);
+  const profilePreviews = parseProfilePreviews(project.multiProfilePreviewsJson);
 
   // Silent B-roll has no audio stream, so there is nothing to transcribe.
   const transcribable = project.mediaAssets.filter(
@@ -205,12 +219,45 @@ export default async function ProjectPage({
         <Card className="mb-8">
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">Content selection</CardTitle>
-            <SelectContentButton
-              projectId={project.id}
-              hasSelections={project.selections.length > 0}
-            />
+            <div className="flex gap-2">
+              <SelectContentButton
+                projectId={project.id}
+                hasSelections={project.selections.length > 0}
+              />
+              <GenerateAllProfilesButton projectId={project.id} />
+            </div>
           </CardHeader>
           <CardContent>
+            {profilePreviews.length > 0 && (
+              <div className="mb-4 grid gap-3 sm:grid-cols-3">
+                {profilePreviews.map((preview) => (
+                  <div
+                    key={preview.outputProfile}
+                    className="rounded-lg border px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">
+                        {PROFILE_LABELS[preview.outputProfile]}
+                      </span>
+                      <ApplyProfileButton
+                        projectId={project.id}
+                        outputProfile={preview.outputProfile}
+                        isActive={project.outputProfile === preview.outputProfile}
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {preview.selections.length} moments ·{" "}
+                      {preview.totalDurationSec}s
+                    </p>
+                    {preview.premise && (
+                      <p dir="auto" className="mt-1 text-xs">
+                        💡 {preview.premise}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             {project.selections.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Pick the moments worth cutting, based on the transcript and the

@@ -6,7 +6,11 @@ import { stat } from "node:fs/promises";
 import { prisma } from "@/lib/db";
 import { runIngest } from "@/lib/ingest/run";
 import { runTranscription } from "@/lib/transcription/run";
-import { runContentSelection } from "@/lib/selection/run";
+import {
+  applyProfilePreview,
+  runContentSelection,
+  runContentSelectionAllProfiles,
+} from "@/lib/selection/run";
 import { runExport } from "@/lib/export/run";
 import type { OutputProfile } from "@/lib/generated/prisma/enums";
 
@@ -71,6 +75,22 @@ export async function transcribeProject(projectId: string): Promise<void> {
 
 export async function selectContent(projectId: string): Promise<void> {
   await runContentSelection(projectId);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function selectContentAllProfiles(projectId: string): Promise<void> {
+  await runContentSelectionAllProfiles(projectId);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function applyProfileSelection(
+  projectId: string,
+  outputProfile: string,
+): Promise<void> {
+  if (!OUTPUT_PROFILES.includes(outputProfile as OutputProfile)) {
+    throw new Error(`Unknown output profile: ${outputProfile}`);
+  }
+  await applyProfilePreview(projectId, outputProfile as OutputProfile);
   revalidatePath(`/projects/${projectId}`);
 }
 

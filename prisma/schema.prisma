@@ -52,6 +52,12 @@ model Project {
   selectionBeatPlan      String?
   selectionShortlistJson String?
 
+  // One-shot preview of all three OutputProfile cuts from a single pipeline
+  // run (shares one vision-analysis pass) — see task #49. JSON array of
+  // ProfilePreview (lib/selection/run.ts). Replaced wholesale each run;
+  // "applying" one copies it into the fields above and into `selections`.
+  multiProfilePreviewsJson String?
+
   mediaAssets    MediaAsset[]
   selections     Selection[]
   timelines      Timeline[]

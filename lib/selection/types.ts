@@ -89,3 +89,16 @@ export const PROFILE_TARGET_SECONDS: Record<OutputProfile, number> = {
   SOCIAL_POST: 60,
   YOUTUBE_LONG: 180,
 };
+
+/** Every profile value, for iterating (e.g. generating all of them at once). */
+export const ALL_OUTPUT_PROFILES: OutputProfile[] = [
+  "REEL_SHORT",
+  "SOCIAL_POST",
+  "YOUTUBE_LONG",
+];
+
+export const PROFILE_LABELS: Record<OutputProfile, string> = {
+  REEL_SHORT: "Reel / Short",
+  SOCIAL_POST: "Social post",
+  YOUTUBE_LONG: "YouTube long-form",
+};

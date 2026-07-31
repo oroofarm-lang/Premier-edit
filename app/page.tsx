@@ -4,14 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { NewProjectForm } from "@/components/new-project-form";
+import { PROFILE_LABELS } from "@/lib/selection/types";
 
 export const dynamic = "force-dynamic";
-
-const PROFILE_LABELS: Record<string, string> = {
-  REEL_SHORT: "Reel / Short",
-  SOCIAL_POST: "Social post",
-  YOUTUBE_LONG: "YouTube long-form",
-};
 
 export default async function Home() {
   const projects = await prisma.project.findMany({
