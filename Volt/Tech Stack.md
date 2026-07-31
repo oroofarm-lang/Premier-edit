@@ -18,7 +18,7 @@ Part of [[Premier Edit]].
 | Local media layer | ffmpeg / ffprobe (npm static binaries) | see gotchas below |
 | Transcription | faster-whisper `large-v3` in a local Python venv | behind a `Transcriber` interface |
 | Visual understanding + smart selection | Anthropic API (`@anthropic-ai/sdk`), `claude-haiku-4-5` (vision) + `claude-sonnet-5` (selection) | needs `ANTHROPIC_API_KEY` in `.env` |
-| Premiere bridge | Timeline XML export (Stage 1) → UXP/CEP panel (Stage 2) | Stage 1 only |
+| Premiere bridge | UXP panel (`premiere-panel/`, Stage 2) + FCP7 XML export (Stage 1, fallback) | Both implemented; panel is the primary path — see below |
 
 > [!bug] shadcn/ui version trap
 > `npx shadcn init` defaults today to Tailwind v4 conventions and the **Base UI** component library, neither of which match this project (Tailwind v3, **Radix UI**). Left unchecked this breaks the build with errors like `border-border` / `outline-ring/50` not existing, and a bad `next/font/google` import for `Geist` (not a real Google font).
@@ -43,6 +43,28 @@ Two ffprobe subtleties that synthetic test clips never surfaced:
 
 ## Visual understanding + smart selection
 
-Added after real-footage testing showed the no-API heuristic selector's limits — see [[Decisions and Open Questions]] for the budget decision this required. Architecture mirrors `Transcriber`: a `VisionAnalyzer` interface, one implementation (`claude-haiku-4-5`, cost-efficient for short captioning-style descriptions), 3 sampled frames per clip via ffmpeg (which auto-applies rotation, so no manual correction needed there). The `LlmContentSelector` (`claude-sonnet-5`) pre-filters candidates with the existing heuristic to keep its prompt bounded, then makes the actual editorial call — order, source diversity, hook/body/payoff structure — informed by researched short-form social editing norms (hook within 1-3s, avoid a 30-40s "dead zone," ~1.5-2.5s average cut frequency). `runContentSelection` auto-upgrades from heuristic to LLM based on whether `ANTHROPIC_API_KEY` is set — same UI button either way.
+Added after real-footage testing showed the no-API heuristic selector's limits — see [[Decisions and Open Questions]] for the budget decision this required. Architecture mirrors `Transcriber`: a `VisionAnalyzer` interface, one implementation (`claude-haiku-4-5`, cost-efficient for short captioning-style descriptions). Frames are sampled **per transcript segment**, not per whole file — `VisualAnalysis` is keyed on `(mediaAssetId, startSec, endSec)`, so two different moments in one long clip get their own description instead of sharing one file-level summary (this was a real bug: it's part of why the B-roll override, below, rarely had a visual reason to fire). ffmpeg auto-applies rotation when extracting frames, so no manual correction is needed there.
 
-See [[Decisions and Open Questions]] for why FCP7 XML was chosen over OTIO for the timeline format.
+The `LlmContentSelector` (`claude-sonnet-5`) pre-filters candidates with the existing heuristic to keep its prompt bounded, then makes the actual editorial call informed by researched short-form social editing norms (hook within 1-3s, avoid a 30-40s "dead zone," ~1.5-2.5s average cut frequency) and a set of **named per-`OutputProfile` story structures** (e.g. "הוק-תוצאה" for reels, "בעיה-פתרון" for longer posts) it picks or blends between, instead of inventing a beat plan from nothing every run. `runContentSelection` auto-upgrades from heuristic to LLM based on whether `ANTHROPIC_API_KEY` is set — same UI button either way.
+
+`ContentSelector.select()` returns `{ selections, premise?, beatPlan?, shortlist? }`, not a bare array — the LLM's one-sentence narrative premise, its chosen structure, and its full pre-filter shortlist (previously computed and discarded) now persist on the `Project` row and render in the UI: a premise/structure line above the picks, and a collapsible list of every candidate considered but not chosen.
+
+**B-roll (audio/video separation):** a selected moment's audio and video don't have to come from the same clip. `Selection` carries optional `videoAssetId`/`videoStartSec`/`videoEndSec` — when set, the moment's picture comes from a different already-selected moment while the audio stays put. Duration mismatches are resolved deterministically (trim, then forward-extend, then backward-extend, then give up) in `lib/cut/video-override.ts`. The LLM prompt also self-extracts explicit brief constraints ("must include X" / "must not include Y") into a `constraints` field, and `validatePlan` mechanically checks the final picks against them — the model can't just state an intent and then ignore it.
+
+See [[Decisions and Open Questions]] for why FCP7 XML was chosen over OTIO for the timeline format, and for the open question on whether the B-roll override ever fires on its own.
+
+## Stage 2 UXP panel (`premiere-panel/`)
+
+Reads an approved cut over HTTP from the local app (port 3002) and builds it directly into a new Premiere sequence via the real `premierepro` UXP API — no XML round-trip. Four real defects only showed up testing against actual Premiere, not from reading the API types:
+
+> [!bug] `createOverwriteItemAction` wants a raw `ProjectItem`, not the `ClipProjectItem` cast
+> The cast is needed to set in/out points, but passing the cast object to the overwrite action itself fails with "Invalid parameter." Matches Adobe's own sample code, not the more "consistent-looking" API guess.
+
+> [!bug] A sequence must be open before it's edited
+> `createSequence()` alone isn't enough — `openSequence()` first, then `getActiveSequence()`, or the first edit fails.
+
+> [!bug] A stereo source on mono sequence tracks occupies two audio tracks
+> The scratch track used to park a B-roll placement's unwanted audio/video half landed on the second channel of the real narration audio and silently destroyed it. Moved scratch indices well clear (V3/A5-A6) and sweep both channels.
+
+> [!bug] `TrackItemSelection` is only valid inside its own callback
+> Holding a reference to use after `createEmptySelection`'s callback returns fails with "The script object is no longer valid." Build the selection and remove the items in the same callback.
