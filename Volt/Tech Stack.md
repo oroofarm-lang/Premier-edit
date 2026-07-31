@@ -51,6 +51,8 @@ The `LlmContentSelector` (`claude-sonnet-5`) pre-filters candidates with the exi
 
 **B-roll (audio/video separation):** a selected moment's audio and video don't have to come from the same clip. `Selection` carries optional `videoAssetId`/`videoStartSec`/`videoEndSec` — when set, the moment's picture comes from a different already-selected moment while the audio stays put. Duration mismatches are resolved deterministically (trim, then forward-extend, then backward-extend, then give up) in `lib/cut/video-override.ts`. The LLM prompt also self-extracts explicit brief constraints ("must include X" / "must not include Y") into a `constraints` field, and `validatePlan` mechanically checks the final picks against them — the model can't just state an intent and then ignore it.
 
+**Multiple output profiles from one project:** `outputProfile` used to be fixed at project creation with no way to try another length without a separate project (re-ingesting the same footage). `runContentSelectionAllProfiles()` shares one vision-analysis pass across all three profiles, runs the three profile-specific selector calls concurrently, and stores them as a preview (`Project.multiProfilePreviewsJson`) the user can compare before `applyProfilePreview()` promotes one into the real `Selection` + switches `outputProfile` — Cut/Export/the panel need no changes, they just see the active selection changed.
+
 See [[Decisions and Open Questions]] for why FCP7 XML was chosen over OTIO for the timeline format, and for the open question on whether the B-roll override ever fires on its own.
 
 ## Stage 2 UXP panel (`premiere-panel/`)

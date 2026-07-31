@@ -11,6 +11,16 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-07-31 — Roadmap task #49 shipped: generate all 3 output profiles in one run
+
+Commit `33cf5a8` on `stage2-panel`. Fourth item from the chatvideopro.com roadmap.
+
+- **The real constraint this uncovered**: `Project.outputProfile` was fixed at creation with no edit path — there was no way to actually "re-run selection per profile by hand" as the roadmap doc assumed, short of creating a whole separate project (re-ingesting and re-transcribing the same footage). The real fix wasn't "batch the re-runs," it was making multiple profiles possible on one project at all.
+- **`runContentSelectionAllProfiles()`** shares one vision-analysis pass and candidate list across all three profiles (`lib/selection/run.ts` refactored to extract `buildCandidates()`/`persistSelection()`, shared by both the single- and all-profile paths), then runs the three profile-specific selector calls concurrently via `Promise.all` — that part can't be shared, since a 20s reel and a 3-minute YouTube cut are genuinely different editorial decisions. Results land in a new `Project.multiProfilePreviewsJson` column, untouched until one is applied.
+- **`applyProfilePreview()`** promotes one preview into the real `Selection` table and switches `Project.outputProfile`, reusing the exact persistence path a direct single-profile run already uses — so Cut/Export/the Premiere panel need zero changes, they just see "the project's active selection changed," same as any other re-run.
+- **Verified end-to-end on the real חליטת תה project**: one click produced three genuinely distinct cuts — 7 moments/20.3s (reel), 9/27.8s (social post), 13/86.7s (YouTube) — each with its own premise. Clicking "Use this cut" on the social post preview correctly flipped `outputProfile` and replaced the 7 active `Selection` rows with the 9 from that preview (confirmed directly in the database, not just the UI).
+- **Roadmap status: 4 of 5 items shipped** (#46-49). Only #50 (conversational refinement of an existing selection — "cut 30s from section 2," "replace moment 3") remains, and it's explicitly the biggest lift of the five.
+
 ## 2026-07-31 — Roadmap tasks #46-48 shipped: named structures, visible shortlist, self-checked constraints
 
 Commit `de9a44e` on `stage2-panel`. First three items from the chatvideopro.com roadmap, landed together (same files).
