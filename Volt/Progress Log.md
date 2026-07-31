@@ -11,6 +11,25 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-07-31 — videoFrom prompt reworked around shot type; still zero picks, and that looks correct
+
+Follow-up to the per-segment visual analysis fix above. Commit `5a0d5f9` on `stage2-panel`.
+
+- **The old B-roll trigger was too narrow and too easy to skip.** It only named "a long moment of spoken explanation" as the classic case, and framed using `videoFrom` as optional in a way that made "do nothing" the path of least resistance.
+- **Rewired around a signal that already existed but was thrown away**: `VisualAnalysis.shotType` (close-up/medium/wide/detail) was computed by the vision model all along but never made it into `CandidateSegment` or the prompt. Added `visualShotType`, listed it per candidate, and reframed the trigger concretely: a close-up/medium shot of *a person talking to camera* with a stronger alternative among the other selected moments. Also added an explicit "zero overrides is a valid outcome, not a failure" clause, since the old wording implicitly pressured the model toward finding a use for the feature.
+- **Re-tested on the real חליטת תה project — still zero `videoFrom` picks.** But this time the inspection is more convincing that it's correct: the final selection's close-up shots are of the kettle and ingredients (visually already matching their own audio), not an actual face-to-camera talking-head moment, which is the real trigger condition. The mechanism now points at the right signal; **this specific footage just doesn't contain the case it's for.**
+- **Honest status:** unverified either way until tested on a project that actually has real talking-head narration next to strong alternative B-roll. Worth re-checking on `מסעדת השף - ריל` or `מבחן בריף - פסטה` (both already-ingested projects) next time B-roll is revisited, rather than assuming this fix alone solved it.
+
+## 2026-07-31 — Competitive research: chatvideopro.com, mapped onto a 5-item roadmap (tasks #46-50)
+
+Studied [chatvideopro.com](https://www.chatvideopro.com) (marketing site + `docs.chatvideopro.com` technical docs) at the user's request — a commercial one-time-license Premiere UXP plugin, ~1000+ customers. Full writeup: `docs/superpowers/specs/2026-07-31-chatvideopro-competitive-roadmap.md`.
+
+- **Confirms the Stage 2 architecture decision independently** — their Story Cutter also does non-destructive direct timeline execution via UXP (not an XML round-trip), the same conclusion this project reached from the AutoEdit research.
+- **Their own docs state a real, permanent gap**: Story Cutter "does not analyze b-roll, graphics, or visual-only footage" — it's transcript-only. This project's per-segment `VisionAnalyzer` + `videoFrom` override (see above) is something their product cannot do at all, not a feature this project is behind on.
+- **Their "B-roll" is AI-*generated* footage** (Seedance 2 / Kling 3.0, prompted from text) — the opposite of this project's real-footage reuse. Deliberately not adopted: for local restaurant/product content the real footage is usually the point, and a generated stand-in risks looking exactly as generic as the stock-footage problem they say they're solving. Filed as a possible far-future idea only (ties to the still-unbuilt `broll-agent` in CLAUDE.md), not scheduled.
+- **Five concrete ideas adopted into a new task list**, ordered by leverage-per-effort: (46) named per-platform story structures instead of an invented-per-run `beatPlan`, (47) exposing the LLM selector's internal pre-filter shortlist as its own visible checkpoint — which actually fits this project's 3-checkpoint MVP philosophy better than it fits their single committed paper-cut, (48) structured brief constraints enforced through the existing `validatePlan` reject-and-retry mechanism rather than hoped-for prompt compliance, (49) one-pass multi-`OutputProfile` generation mirroring their `/batch`, (50) conversational refinement of an already-made selection instead of all-or-nothing re-runs.
+- **Explicitly declined, with reasons recorded in the spec**: the rest of their Studio suite (Cinematic Lab, Avatar Studio, Rotoscope, Relight, Reframe, color grading, upscaling) — all past this project's stated automation boundary; BYOK multi-model wholesale billing — a commercial multi-tenant monetization design, irrelevant to a single-user local tool; switching transcription to Premiere's own Text panel export — would trade a Hebrew-tested pipeline for an unproven one with no stated benefit.
+
 ## 2026-07-31 — Visual analysis moved from per-file to per-segment
 
 Task tracked since the B-roll work: the LLM selector never chose `videoFrom` on real footage, and the suspected cause was that `VisualAnalysis` was one row per `MediaAsset` — every transcript segment cut from the same long clip saw an identical `visualSummary`, so the model had no visual signal that one moment in a clip looks different from another. Fixed on `stage2-panel`, commit `81f5e87`, 29/29 tests passing.
