@@ -10,9 +10,21 @@
   --cosmic-green: #10b981;
 }
 
+/* UXP's panel webview does not provide ambient document scrolling the way a
+   normal browser tab does — without an explicit height + overflow on the
+   root elements, content taller than the docked panel is silently clipped
+   with no scrollbar at all, rather than staying scrollable like it would in
+   a browser. */
+html {
+  height: 100%;
+}
+
 body {
+  height: 100%;
   margin: 0;
   padding: 12px;
+  box-sizing: border-box;
+  overflow-y: auto;
   font-family: -apple-system, sans-serif;
   background-color: var(--cosmic-bg);
   color: var(--uxp-host-text-color, var(--cosmic-text));
