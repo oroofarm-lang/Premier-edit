@@ -10,8 +10,11 @@ import { SelectContentButton } from "@/components/select-content-button";
 import { GenerateAllProfilesButton } from "@/components/generate-all-profiles-button";
 import { ApplyProfileButton } from "@/components/apply-profile-button";
 import { ExportButton } from "@/components/export-button";
+import { RefinementPanel } from "@/components/refinement-panel";
 import { PROFILE_LABELS } from "@/lib/selection/types";
+import type { SelectedSegment } from "@/lib/selection/types";
 import type { ProfilePreview } from "@/lib/selection/run";
+import type { RefinementDraft } from "@/lib/selection/refine-plan";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +56,15 @@ function parseProfilePreviews(json: string | null): ProfilePreview[] {
     return JSON.parse(json) as ProfilePreview[];
   } catch {
     return [];
+  }
+}
+
+function parseRefinementDraft(json: string | null): RefinementDraft | null {
+  if (!json) return null;
+  try {
+    return JSON.parse(json) as RefinementDraft;
+  } catch {
+    return null;
   }
 }
 
@@ -104,6 +116,19 @@ export default async function ProjectPage({
     .filter((c) => c.chosenOrder === null)
     .sort((a, b) => a.filePath.localeCompare(b.filePath) || a.startSec - b.startSec);
   const profilePreviews = parseProfilePreviews(project.multiProfilePreviewsJson);
+  const refinementDraft = parseRefinementDraft(project.refinementDraftJson);
+  // The live cut, in the shape the refinement diff compares against.
+  const currentSelections: SelectedSegment[] = project.selections.map((s) => ({
+    mediaAssetId: s.mediaAssetId,
+    startSec: s.startSec,
+    endSec: s.endSec,
+    order: s.order,
+    score: s.score ?? 0,
+    reason: s.reason ?? "",
+  }));
+  const fileNameByAssetId = Object.fromEntries(
+    project.mediaAssets.map((a) => [a.id, a.filePath.split("/").pop() ?? a.filePath]),
+  );
 
   // Silent B-roll has no audio stream, so there is nothing to transcribe.
   const transcribable = project.mediaAssets.filter(
@@ -337,6 +362,15 @@ export default async function ProjectPage({
                     </ul>
                   </details>
                 )}
+                {project.selectionShortlistJson && (
+                  <RefinementPanel
+                    projectId={project.id}
+                    currentSelections={currentSelections}
+                    fileNameByAssetId={fileNameByAssetId}
+                    draft={refinementDraft}
+                  />
+                )}
+
                 {selectionCheckpoint && (
                   <div className="pt-3">
                     {selectionCheckpoint.approved ? (

@@ -11,6 +11,11 @@ import {
   runContentSelection,
   runContentSelectionAllProfiles,
 } from "@/lib/selection/run";
+import {
+  applyRefinementDraft,
+  discardRefinementDraft,
+  refineSelection,
+} from "@/lib/selection/refine";
 import { runExport } from "@/lib/export/run";
 import type { OutputProfile } from "@/lib/generated/prisma/enums";
 
@@ -91,6 +96,26 @@ export async function applyProfileSelection(
     throw new Error(`Unknown output profile: ${outputProfile}`);
   }
   await applyProfilePreview(projectId, outputProfile as OutputProfile);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function refineSelectionAction(
+  projectId: string,
+  instruction: string,
+): Promise<void> {
+  const trimmed = instruction.trim();
+  if (!trimmed) return;
+  await refineSelection(projectId, trimmed);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function applyRefinementAction(projectId: string): Promise<void> {
+  await applyRefinementDraft(projectId);
+  revalidatePath(`/projects/${projectId}`);
+}
+
+export async function discardRefinementAction(projectId: string): Promise<void> {
+  await discardRefinementDraft(projectId);
   revalidatePath(`/projects/${projectId}`);
 }
 

@@ -58,6 +58,14 @@ model Project {
   // "applying" one copies it into the fields above and into `selections`.
   multiProfilePreviewsJson String?
 
+  // Pending conversational-refinement result (task #50) — a RefinementDraft
+  // (lib/selection/refine.ts): the candidate replacement SelectionResult plus
+  // the full turn-by-turn conversation that produced it. Null when there is
+  // no pending refinement. Cleared by applying/discarding the draft, and by
+  // persistSelection itself (a fresh selection run invalidates a draft that
+  // was refining the cut it's about to replace).
+  refinementDraftJson String?
+
   mediaAssets    MediaAsset[]
   selections     Selection[]
   timelines      Timeline[]

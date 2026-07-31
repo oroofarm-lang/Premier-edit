@@ -116,7 +116,9 @@ ${describeStoryStructures(request.outputProfile)}
 הסדר במערך selections הוא סדר ההופעה בקאט הסופי.`;
 }
 
-type LlmPlan = {
+// Exported for lib/selection/refine.ts, which parses the identical response
+// shape for a refinement turn and must not duplicate this parser.
+export type LlmPlan = {
   premise: string;
   beatPlan: string[];
   constraints?: LlmConstraints;
@@ -232,7 +234,7 @@ export function validatePlan(
   return { ok: true };
 }
 
-function parsePlan(text: string): LlmPlan {
+export function parsePlan(text: string): LlmPlan {
   const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
   const parsed = JSON.parse(cleaned);
   if (!Array.isArray(parsed.selections)) {

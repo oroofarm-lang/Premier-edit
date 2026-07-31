@@ -113,10 +113,10 @@ function totalDurationOf(result: SelectionResult): number {
  * Persists a selection result as the project's active cut — replaces
  * `Selection` wholesale (it's a re-runnable decision, not an accumulating
  * log) and snapshots the selector's own reasoning onto `Project`, same as
- * before. Shared by a direct single-profile run and by applying one of
- * several generated previews.
+ * before. Shared by a direct single-profile run, by applying one of several
+ * generated previews, and by applying a conversational refinement draft.
  */
-async function persistSelection(
+export async function persistSelection(
   projectId: string,
   outputProfile: OutputProfile,
   result: SelectionResult,
@@ -161,6 +161,8 @@ async function persistSelection(
         selectionShortlistJson: shortlistWithStatus
           ? JSON.stringify(shortlistWithStatus)
           : null,
+        // Any pending refinement was refining the cut we just replaced.
+        refinementDraftJson: null,
       },
     }),
   ]);
@@ -171,6 +173,14 @@ async function persistSelection(
   if (!existing) {
     await prisma.approvalCheckpoint.create({
       data: { projectId, stage: "CONTENT_SELECTION" },
+    });
+  } else if (existing.approved) {
+    // The cut the user approved no longer exists. Leaving the checkpoint
+    // approved would unlock export against a cut nobody signed off on —
+    // which the three-checkpoint design exists specifically to prevent.
+    await prisma.approvalCheckpoint.update({
+      where: { id: existing.id },
+      data: { approved: false, approvedAt: null },
     });
   }
 }
