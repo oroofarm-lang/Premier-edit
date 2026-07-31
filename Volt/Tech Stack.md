@@ -53,6 +53,19 @@ The `LlmContentSelector` (`claude-sonnet-5`) pre-filters candidates with the exi
 
 **Multiple output profiles from one project:** `outputProfile` used to be fixed at project creation with no way to try another length without a separate project (re-ingesting the same footage). `runContentSelectionAllProfiles()` shares one vision-analysis pass across all three profiles, runs the three profile-specific selector calls concurrently, and stores them as a preview (`Project.multiProfilePreviewsJson`) the user can compare before `applyProfilePreview()` promotes one into the real `Selection` + switches `outputProfile` — Cut/Export/the panel need no changes, they just see the active selection changed.
 
+**Conversational refinement (`lib/selection/refine.ts` + `refine-plan.ts`):** a cut can be edited by instruction instead of only re-rolled from scratch. The user types Hebrew ("תוריד את הרגע האחרון") or clicks a numbered moment chip to seed a reference, and the model returns a revised plan. Three things make this cheap and safe:
+- It draws from `Project.selectionShortlistJson` — the candidate pool the original cut was already chosen from — so a turn is **one Anthropic call** with no vision pass, no ffmpeg, no candidate rebuild, and the shortlist's positional `index` contract stays valid so `validatePlan` is reused unchanged.
+- The model returns a *complete* plan, not a diff (reusing `parsePlan`/`validatePlan` rather than duplicating them). Drift is caught by showing a computed kept/removed/added/moved diff before anything is applied. "moved" is measured on relative order among moments common to both sides, so removing one moment doesn't misreport every survivor as moved.
+- Turns chain off `Project.refinementDraftJson` (the pending cut + the whole conversation); the live `Selection` rows change only when the user clicks apply, which routes through the same `persistSelection` as every other write path.
+
+> [!bug] A contradicted instruction can make the model return nothing at all
+> Asking for a 9-second opening against the 3-second hook rule made it spend its entire 16k token budget reasoning and return `stop_reason=max_tokens, blocks=[thinking]` — a 4.5-minute request that then 500'd. Same failure class already documented at 4096 tokens in `llm-selector.ts`. The fix was **removing the contradiction, not raising the budget**: the prompt now tells the model that returning the cut unchanged with an explanation is a valid answer. Same instruction then completed in 46s with a readable refusal.
+
+> [!bug] Replacing a cut used to leave its approval checkpoint standing
+> `persistSelection` created the `CONTENT_SELECTION` checkpoint only when absent and never reset `approved`, so re-running selection (or applying a preview) after approval left export unlocked against a cut nobody signed off on. Now any selection replacement resets `approved`/`approvedAt`.
+
+Note the file split: pure logic (prompt assembly, draft reconstruction, diffing) lives in `refine-plan.ts` with no Prisma or SDK import; `refine.ts` holds the I/O. This isn't stylistic — vitest doesn't load `.env`, so a module that imports `prisma` at the top can't be unit-tested at all. Every tested module in `lib/` already follows this shape.
+
 See [[Decisions and Open Questions]] for why FCP7 XML was chosen over OTIO for the timeline format, and for the open question on whether the B-roll override ever fires on its own.
 
 ## Stage 2 UXP panel (`premiere-panel/`)
