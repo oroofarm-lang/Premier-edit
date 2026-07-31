@@ -64,6 +64,10 @@ Real-footage testing (see below) surfaced two hard limits of the transcript-only
 
 **Still unverified:** the LLM selector's real editorial quality has only been checked on one real project (see below) — it produced a genuinely better sequence than the heuristic there, but that's one data point, not a validated pattern.
 
+**Conversational refinement** ([lib/selection/refine.ts](lib/selection/refine.ts) + [lib/selection/refine-plan.ts](lib/selection/refine-plan.ts)) makes the content-selection checkpoint iterative rather than one-shot: the user can type a Hebrew instruction against the currently active cut and get back a revised plan with a visible diff, without re-running selection from scratch. It reuses `Project.selectionShortlistJson` (the original candidate pool) so a turn costs one Anthropic call, and reuses `validatePlan`/`parsePlan` verbatim rather than inventing a diff format. Nothing touches the live `Selection` rows until the user explicitly applies a draft (`Project.refinementDraftJson`), and applying one — like any selection replacement — now resets the `CONTENT_SELECTION` checkpoint's `approved` flag, so the "three approval checkpoints, no blind runs" rule below still holds even though checkpoint #2 can now be revisited multiple times before being approved. Pure prompt/diff/reconstruction logic is split into `refine-plan.ts` (no Prisma/SDK import) specifically so it's unit-testable — vitest doesn't load `.env`, so any module importing `@/lib/db` at the top can't be tested at all. Design: `docs/superpowers/specs/2026-07-31-conversational-refinement-design.md` (main branch only — see "Where docs and code each live" in `Volt/Decisions and Open Questions.md`).
+
+**Note on this file's staleness (2026-07-31 audit):** the sections below (Planned Pipeline, Planned Agents, Premiere Integration) predate B-roll, per-segment vision, named story structures, multi-profile generation, and the refinement feature above. They're not wrong, just incomplete — check `Volt/Progress Log.md` (main branch) for the real shipped history before assuming this file is exhaustive.
+
 ## Planned Pipeline (MVP, PRD §9)
 
 ```
