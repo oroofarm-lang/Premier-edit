@@ -243,8 +243,10 @@ function renderDraft(draft) {
   }
   block.hidden = false;
   document.getElementById("draft-summary").textContent =
-    `${draft.selections.length} moments · ${draft.totalDurationSec}s` +
-    (draft.premise ? ` · ${draft.premise}` : "");
+    `${draft.selections.length} moments · ${draft.totalDurationSec}s`;
+  const premiseEl = document.getElementById("draft-premise");
+  premiseEl.textContent = draft.premise ? `💡 ${draft.premise}` : "";
+  premiseEl.hidden = !draft.premise;
   const ul = document.getElementById("draft-diff");
   ul.innerHTML = "";
   for (const d of draft.diff) {

@@ -31,7 +31,8 @@ body {
 #plan-list,
 #log {
   margin: 6px 0 0 0;
-  padding: 6px 6px 6px 18px;
+  padding-block: 6px;
+  padding-inline: 6px 18px;
   max-height: 220px;
   overflow-y: auto;
   background-color: var(--cosmic-surface);

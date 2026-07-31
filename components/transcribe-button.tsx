@@ -17,6 +17,7 @@ export function TranscribeButton({
   return (
     <Button
       size="sm"
+      dir="ltr"
       variant={pendingCount > 0 ? "default" : "outline"}
       disabled={pending || pendingCount === 0}
       className={pending ? "shadow-glow" : undefined}

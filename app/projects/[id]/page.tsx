@@ -147,20 +147,20 @@ export default async function ProjectPage({
       </Link>
 
       <header className="mb-8 mt-4">
-        <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
+        <h1 dir="auto" className="text-2xl font-semibold tracking-tight">{project.name}</h1>
         <dl className="mt-3 space-y-1 text-sm text-muted-foreground">
-          <div>
+          <div dir="ltr" className="text-right">
             <dt className="inline font-medium">Footage: </dt>
             <dd className="inline font-mono text-xs">{project.footageFolder}</dd>
           </div>
           {project.audioFolder && (
-            <div>
+            <div dir="ltr" className="text-right">
               <dt className="inline font-medium">Audio: </dt>
               <dd className="inline font-mono text-xs">{project.audioFolder}</dd>
             </div>
           )}
           {project.brief && (
-            <div>
+            <div dir="auto">
               <dt className="inline font-medium">Brief: </dt>
               <dd className="inline">{project.brief}</dd>
             </div>
@@ -178,12 +178,12 @@ export default async function ProjectPage({
         </CardHeader>
         <CardContent>
           {project.mediaAssets.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
+            <p dir="ltr" className="text-right text-sm text-muted-foreground">
               Nothing ingested yet. Run ingest to scan the folders above.
             </p>
           ) : (
             <div className="space-y-1 text-sm">
-              <p>
+              <p dir="ltr" className="text-right">
                 <span className="font-medium">{videos.length}</span> video ·{" "}
                 <span className="font-medium">{audio.length}</span> audio
               </p>
@@ -214,12 +214,12 @@ export default async function ProjectPage({
             />
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">
+            <p dir="ltr" className="text-right text-sm text-muted-foreground">
               {transcribed.length} of {transcribable.length} clips transcribed
               (Hebrew, running locally — nothing is uploaded).
             </p>
             {pendingTranscription > 0 && (
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p dir="ltr" className="mt-1 text-right text-xs text-muted-foreground">
                 The first run downloads the model (~3GB) and takes a few minutes.
               </p>
             )}
@@ -261,7 +261,7 @@ export default async function ProjectPage({
                     className="rounded-lg border px-3 py-2 text-sm"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium">
+                      <span dir="ltr" className="font-medium">
                         {PROFILE_LABELS[preview.outputProfile]}
                       </span>
                       <ApplyProfileButton
@@ -270,7 +270,7 @@ export default async function ProjectPage({
                         isActive={project.outputProfile === preview.outputProfile}
                       />
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
+                    <p dir="ltr" className="mt-1 text-right text-xs text-muted-foreground">
                       {preview.selections.length} moments ·{" "}
                       {preview.totalDurationSec}s
                     </p>
@@ -284,7 +284,7 @@ export default async function ProjectPage({
               </div>
             )}
             {project.selections.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
+              <p dir="ltr" className="text-right text-sm text-muted-foreground">
                 Pick the moments worth cutting, based on the transcript and the
                 brief.
               </p>
@@ -300,7 +300,7 @@ export default async function ProjectPage({
                     )}
                   </div>
                 )}
-                <p className="text-sm">
+                <p dir="ltr" className="text-right text-sm">
                   <span className="font-medium">
                     {project.selections.length}
                   </span>{" "}
@@ -313,7 +313,7 @@ export default async function ProjectPage({
                       className="rounded-lg border px-3 py-2 text-sm"
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <span className="font-mono text-xs text-muted-foreground">
+                        <span dir="ltr" className="font-mono text-xs text-muted-foreground">
                           {selection.mediaAsset.filePath.split("/").pop()} ·{" "}
                           {selection.startSec}–{selection.endSec}s
                         </span>
@@ -321,16 +321,16 @@ export default async function ProjectPage({
                           {selection.score?.toFixed(2) ?? "—"}
                         </Badge>
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
+                      <p dir="auto" className="mt-1 text-xs text-muted-foreground">
                         {selection.reason}
                       </p>
                       {selection.videoAsset && (
-                        <p className="mt-1 text-xs text-muted-foreground">
+                        <p dir="auto" className="mt-1 text-xs text-muted-foreground">
                           🎥 וידיאו מ:{" "}
-                          <span className="font-mono">
+                          <span dir="ltr" className="font-mono">
                             {selection.videoAsset.filePath.split("/").pop()}
-                          </span>{" "}
-                          ({selection.videoStartSec}–{selection.videoEndSec}s)
+                            {" "}({selection.videoStartSec}–{selection.videoEndSec}s)
+                          </span>
                         </p>
                       )}
                     </li>
@@ -344,7 +344,7 @@ export default async function ProjectPage({
                     <ul className="mt-2 space-y-2">
                       {consideredNotChosen.map((c, i) => (
                         <li key={i} className="text-xs text-muted-foreground">
-                          <span className="font-mono">
+                          <span dir="ltr" className="font-mono">
                             {c.filePath.split("/").pop()} · {c.startSec}–{c.endSec}s
                           </span>
                           {c.text && (
@@ -393,7 +393,7 @@ export default async function ProjectPage({
       {selectionCheckpoint?.approved && (
         <Card className="mb-8">
           <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">Rough cut → Premiere</CardTitle>
+            <CardTitle dir="ltr" className="text-base">Rough cut → Premiere</CardTitle>
             <ExportButton
               projectId={project.id}
               hasExports={project.editVersions.length > 0}
@@ -401,7 +401,7 @@ export default async function ProjectPage({
           </CardHeader>
           <CardContent>
             {project.editVersions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
+              <p dir="ltr" className="text-right text-sm text-muted-foreground">
                 Builds a butt-joined rough cut from the approved moments and
                 writes an FCP7 XML you import into Premiere via File → Import.
               </p>
@@ -464,7 +464,7 @@ export default async function ProjectPage({
             Media assets
           </h2>
           <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-sm">
+            <table dir="ltr" className="w-full text-sm">
               <thead className="border-b bg-muted/50 text-left text-xs text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">File</th>

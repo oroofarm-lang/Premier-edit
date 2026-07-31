@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="he" dir="rtl">
   <head>
     <meta name="viewport" content="width=device-width" />
     <link rel="stylesheet" href="styles.css" />
@@ -7,7 +7,7 @@
   </head>
   <body>
     <sp-heading size="M">Premier Edit</sp-heading>
-    <sp-body id="status"><span id="status-spinner" class="spinner" hidden></span><span id="status-text">Connecting…</span></sp-body>
+    <sp-body id="status" dir="ltr"><span id="status-spinner" class="spinner" hidden></span><span id="status-text">Connecting…</span></sp-body>
 
     <div id="premiere-block" class="block" hidden>
       <sp-detail>Premiere</sp-detail>
@@ -44,7 +44,8 @@
 
       <div id="draft-block" hidden>
         <sp-detail>Proposed version</sp-detail>
-        <sp-body id="draft-summary"></sp-body>
+        <sp-body id="draft-summary" dir="ltr"></sp-body>
+        <sp-body id="draft-premise" class="muted" dir="auto"></sp-body>
         <ul id="draft-diff"></ul>
         <div class="actions">
           <sp-button id="draft-apply-button" variant="accent">Apply</sp-button>
@@ -55,8 +56,8 @@
 
     <div id="plan-block" class="block" hidden>
       <sp-detail>Approved cut plan</sp-detail>
-      <sp-body id="plan-summary"></sp-body>
-      <ul id="plan-list"></ul>
+      <sp-body id="plan-summary" dir="ltr"></sp-body>
+      <ul id="plan-list" dir="ltr"></ul>
     </div>
 
     <div class="actions">
@@ -69,8 +70,8 @@
     <dialog id="confirm-dialog">
       <sp-heading size="S">Build sequence?</sp-heading>
       <sp-divider size="medium"></sp-divider>
-      <sp-body id="confirm-text"></sp-body>
-      <sp-body class="muted">
+      <sp-body id="confirm-text" dir="ltr"></sp-body>
+      <sp-body class="muted" dir="ltr">
         This creates a new sequence and imports any missing source files. Your
         existing sequences are not modified.
       </sp-body>
@@ -80,6 +81,6 @@
       </div>
     </dialog>
 
-    <ul id="log"></ul>
+    <ul id="log" dir="ltr"></ul>
   </body>
 </html>

@@ -23,7 +23,7 @@ export function NewProjectForm() {
   );
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form action={formAction} dir="ltr" className="space-y-4">
       <div className="space-y-1.5">
         <Label htmlFor="name">Project name</Label>
         <Input id="name" name="name" placeholder="Cafe Levi reel" required />

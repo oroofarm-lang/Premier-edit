@@ -16,7 +16,7 @@ export default async function Home() {
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
-      <header className="mb-10">
+      <header dir="ltr" className="mb-10 text-right">
         <h1 className="text-2xl font-semibold tracking-tight">Premier Edit</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Point at a footage folder and an audio folder, and the pipeline takes it
@@ -36,7 +36,7 @@ export default async function Home() {
       <section>
         <h2 className="mb-3 text-sm font-medium text-muted-foreground">Projects</h2>
         {projects.length === 0 ? (
-          <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+          <p dir="ltr" className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
             No projects yet.
           </p>
         ) : (
@@ -50,12 +50,12 @@ export default async function Home() {
                 >
                   <Link href={`/projects/${project.id}`}>
                     <span className="flex flex-col items-start gap-1">
-                      <span className="font-medium">{project.name}</span>
-                      <span className="text-xs text-muted-foreground">
+                      <span dir="auto" className="font-medium">{project.name}</span>
+                      <span dir="ltr" className="text-xs text-muted-foreground">
                         {project._count.mediaAssets} assets
                       </span>
                     </span>
-                    <Badge variant="secondary">
+                    <Badge dir="ltr" variant="secondary">
                       {PROFILE_LABELS[project.outputProfile]}
                     </Badge>
                   </Link>
