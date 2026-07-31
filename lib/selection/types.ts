@@ -57,9 +57,27 @@ export type SelectionRequest = {
   candidates: CandidateSegment[];
 };
 
+export type SelectionResult = {
+  selections: SelectedSegment[];
+  /**
+   * One-sentence narrative idea the selector was building toward, and which
+   * named story structure it followed — present only for a selector that
+   * actually reasons about narrative (the LLM one). Absent for the heuristic
+   * selector, which has no such concept.
+   */
+  premise?: string;
+  beatPlan?: string[];
+  /**
+   * Every candidate the selector considered before narrowing down to
+   * `selections`, when it pre-filters (the LLM selector's heuristic shortlist
+   * stage). Lets the UI show what didn't make the cut, not just what did.
+   */
+  shortlist?: CandidateSegment[];
+};
+
 export interface ContentSelector {
   readonly name: string;
-  select(request: SelectionRequest): Promise<SelectedSegment[]>;
+  select(request: SelectionRequest): Promise<SelectionResult>;
 }
 
 /**

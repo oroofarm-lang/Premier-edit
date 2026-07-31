@@ -23,6 +23,26 @@ function formatResolution(width: number | null, height: number | null) {
   return `${width}×${height}`;
 }
 
+type ShortlistEntry = {
+  mediaAssetId: string;
+  filePath: string;
+  startSec: number;
+  endSec: number;
+  text: string;
+  visualSummary?: string | null;
+  visualShotType?: string | null;
+  chosenOrder: number | null;
+};
+
+function parseShortlist(json: string | null): ShortlistEntry[] {
+  if (!json) return [];
+  try {
+    return JSON.parse(json) as ShortlistEntry[];
+  } catch {
+    return [];
+  }
+}
+
 export default async function ProjectPage({
   params,
 }: {
@@ -63,6 +83,13 @@ export default async function ProjectPage({
       project.selections.reduce((sum, s) => sum + (s.endSec - s.startSec), 0) *
         10,
     ) / 10;
+  const beatPlan: string[] = project.selectionBeatPlan
+    ? (JSON.parse(project.selectionBeatPlan) as string[])
+    : [];
+  const shortlist = parseShortlist(project.selectionShortlistJson);
+  const consideredNotChosen = shortlist
+    .filter((c) => c.chosenOrder === null)
+    .sort((a, b) => a.filePath.localeCompare(b.filePath) || a.startSec - b.startSec);
 
   // Silent B-roll has no audio stream, so there is nothing to transcribe.
   const transcribable = project.mediaAssets.filter(
@@ -191,6 +218,16 @@ export default async function ProjectPage({
               </p>
             ) : (
               <>
+                {project.selectionPremise && (
+                  <div className="mb-3 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+                    <p dir="auto">💡 {project.selectionPremise}</p>
+                    {beatPlan.length > 0 && (
+                      <p className="mt-1 text-xs text-muted-foreground" dir="auto">
+                        מבנה: {beatPlan.join(" ← ")}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <p className="text-sm">
                   <span className="font-medium">
                     {project.selections.length}
@@ -227,6 +264,32 @@ export default async function ProjectPage({
                     </li>
                   ))}
                 </ol>
+                {consideredNotChosen.length > 0 && (
+                  <details className="mt-3 rounded-lg border px-3 py-2 text-sm">
+                    <summary className="cursor-pointer text-muted-foreground">
+                      עוד {consideredNotChosen.length} רגעים שנשקלו ולא נבחרו
+                    </summary>
+                    <ul className="mt-2 space-y-2">
+                      {consideredNotChosen.map((c, i) => (
+                        <li key={i} className="text-xs text-muted-foreground">
+                          <span className="font-mono">
+                            {c.filePath.split("/").pop()} · {c.startSec}–{c.endSec}s
+                          </span>
+                          {c.text && (
+                            <p dir="auto" className="mt-0.5">
+                              {c.text}
+                            </p>
+                          )}
+                          {c.visualSummary && (
+                            <p dir="auto" className="mt-0.5">
+                              👁 {c.visualSummary}
+                            </p>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
                 {selectionCheckpoint && (
                   <div className="pt-3">
                     {selectionCheckpoint.approved ? (

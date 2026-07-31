@@ -103,4 +103,56 @@ describe("validatePlan", () => {
     const result = validatePlan(plan, shortlist);
     expect(result.ok).toBe(false);
   });
+
+  describe("constraints", () => {
+    const topicShortlist = [
+      { ...candidate("a", 0, 2), text: "מדברים על מרווה" },
+      { ...candidate("b", 0, 3), text: "מדברים על זעתר" },
+      { ...candidate("c", 0, 2.5), text: "סתם רגע שקט" },
+    ];
+
+    it("accepts a plan whose selections cover its own required topic", () => {
+      const plan = {
+        premise: "test",
+        beatPlan: ["הוק", "גוף"],
+        constraints: { requiredTopics: ["זעתר"], excludedTopics: [] },
+        choices: [
+          { index: 0, score: 0.9, reason: "hook", beat: "הוק" },
+          { index: 1, score: 0.8, reason: "body", beat: "גוף" },
+        ],
+      };
+      expect(validatePlan(plan, topicShortlist)).toEqual({ ok: true });
+    });
+
+    it("rejects a plan that states a required topic but doesn't select anything covering it", () => {
+      const plan = {
+        premise: "test",
+        beatPlan: ["הוק"],
+        constraints: { requiredTopics: ["זעתר"], excludedTopics: [] },
+        choices: [{ index: 0, score: 0.9, reason: "hook", beat: "הוק" }],
+      };
+      const result = validatePlan(plan, topicShortlist);
+      expect(result.ok).toBe(false);
+    });
+
+    it("rejects a plan that selects a moment covering its own excluded topic", () => {
+      const plan = {
+        premise: "test",
+        beatPlan: ["הוק"],
+        constraints: { requiredTopics: [], excludedTopics: ["זעתר"] },
+        choices: [{ index: 1, score: 0.9, reason: "hook", beat: "הוק" }],
+      };
+      const result = validatePlan(plan, topicShortlist);
+      expect(result.ok).toBe(false);
+    });
+
+    it("treats a plan with no constraints field the same as empty constraints", () => {
+      const plan = {
+        premise: "test",
+        beatPlan: ["הוק"],
+        choices: [{ index: 0, score: 0.9, reason: "hook", beat: "הוק" }],
+      };
+      expect(validatePlan(plan, topicShortlist)).toEqual({ ok: true });
+    });
+  });
 });

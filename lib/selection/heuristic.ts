@@ -1,7 +1,7 @@
 import type {
   ContentSelector,
-  SelectedSegment,
   SelectionRequest,
+  SelectionResult,
 } from "./types";
 
 // Very common Hebrew (and a few English) words carry no topical signal, so
@@ -121,7 +121,7 @@ function describe(
 export class HeuristicContentSelector implements ContentSelector {
   readonly name = "heuristic-v1";
 
-  async select(request: SelectionRequest): Promise<SelectedSegment[]> {
+  async select(request: SelectionRequest): Promise<SelectionResult> {
     const briefTokens = request.brief ? tokenize(request.brief) : [];
     const hasBrief = briefTokens.length > 0;
 
@@ -172,7 +172,7 @@ export class HeuristicContentSelector implements ContentSelector {
       if (best) chosen.push(best);
     }
 
-    return chosen
+    const selections = chosen
       .sort((a, b) => {
         const byFile = a.candidate.filePath.localeCompare(b.candidate.filePath);
         return byFile !== 0 ? byFile : a.candidate.startSec - b.candidate.startSec;
@@ -185,5 +185,7 @@ export class HeuristicContentSelector implements ContentSelector {
         score: Math.round(item.score * 1000) / 1000,
         reason: item.reason,
       }));
+
+    return { selections };
   }
 }

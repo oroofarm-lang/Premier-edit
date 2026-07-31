@@ -82,11 +82,28 @@ export async function runContentSelection(
     }
   }
 
-  const selected = await selector.select({
+  const {
+    selections: selected,
+    premise,
+    beatPlan,
+    shortlist,
+  } = await selector.select({
     brief: project.brief,
     outputProfile: project.outputProfile,
     targetDurationSec: PROFILE_TARGET_SECONDS[project.outputProfile],
     candidates,
+  });
+  // Tag each shortlist entry with whether (and where) it ended up in the
+  // final cut, so the UI can show "considered but not used" alongside
+  // "picked" without a second lookup.
+  const shortlistWithStatus = shortlist?.map((c) => {
+    const match = selected.find(
+      (s) =>
+        s.mediaAssetId === c.mediaAssetId &&
+        s.startSec === c.startSec &&
+        s.endSec === c.endSec,
+    );
+    return { ...c, chosenOrder: match?.order ?? null };
   });
 
   // Selection is a re-runnable decision, not an accumulating log — replace the
@@ -106,6 +123,16 @@ export async function runContentSelection(
         videoStartSec: s.videoOverride?.startSec ?? null,
         videoEndSec: s.videoOverride?.endSec ?? null,
       })),
+    }),
+    prisma.project.update({
+      where: { id: projectId },
+      data: {
+        selectionPremise: premise || null,
+        selectionBeatPlan: beatPlan ? JSON.stringify(beatPlan) : null,
+        selectionShortlistJson: shortlistWithStatus
+          ? JSON.stringify(shortlistWithStatus)
+          : null,
+      },
     }),
   ]);
 

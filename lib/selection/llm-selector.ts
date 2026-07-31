@@ -1,11 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { SOCIAL_EDITING_GUIDELINES } from "@/lib/editing/social-guidelines";
+import { SOCIAL_EDITING_GUIDELINES, describeStoryStructures } from "@/lib/editing/social-guidelines";
 import { HeuristicContentSelector } from "./heuristic";
 import type {
   CandidateSegment,
   ContentSelector,
-  SelectedSegment,
   SelectionRequest,
+  SelectionResult,
 } from "./types";
 
 const MODEL = "claude-sonnet-5";
@@ -27,6 +27,19 @@ type LlmChoice = {
   beat: string;
   /** Shortlist index whose footage plays over this moment's audio, if any. */
   videoFrom?: number;
+};
+
+/**
+ * Explicit "must include" / "must not include" instructions the model itself
+ * extracted from the free-text brief. Mechanically checked in validatePlan
+ * rather than trusted — this catches the model stating an intent ("the brief
+ * says to include the funding round") and then not actually honoring it in
+ * `choices`, the same class of self-consistency bug validatePlan's other
+ * checks already guard against.
+ */
+type LlmConstraints = {
+  requiredTopics: string[];
+  excludedTopics: string[];
 };
 
 function buildPrompt(
@@ -57,8 +70,12 @@ ${SOCIAL_EDITING_GUIDELINES}
 רשימת המועמדים (מספר # הוא המזהה שאתה מחזיר):
 ${items}
 
-לפני שאתה בוחר, תכנן: מה הפרמיסה של הסרטון במשפט אחד, ומה מבנה הביטים
-(לדוגמה: הוק, גוף, סיום) שאתה מתכוון לבנות מהם.
+מבני סיפור מוכרים ליעד הזה — בחר אחד שמתאים לתוכן, או מזג בין שניים אם באמת
+מתאים יותר:
+${describeStoryStructures(request.outputProfile)}
+
+לפני שאתה בוחר, תכנן: מה הפרמיסה של הסרטון במשפט אחד, ובאיזה מבנה מהרשימה
+למעלה אתה בונה אותו (או שילוב שלהם).
 
 רק את המועמדים שאתה בפועל בוחר לקאט הסופי — לא צריך לחוות דעה על כולם.
 לכל מועמד שנבחר ציין גם "beat" — איזה חלק מהמבנה שתכננת הוא ממלא (למשל
@@ -79,9 +96,17 @@ ${items}
   טובה יותר בין שאר הרגעים — אל תשתמש ב-videoFrom בכלל. זו תוצאה תקינה,
   לא כשל: לא כל קאט צריך B-roll.
 
+אילוצים מפורשים מהבריף: אם הבריף מכיל הוראה מפורשת מהצורה "חייב לכלול X" /
+"אסור לכלול Y" / "בלי Z" — ולא רק נושא כללי — תחלץ אותם ל-"constraints"
+למטה. אם הבריף לא מכיל אילוץ מפורש כזה, החזר מערכים ריקים. אל תמציא אילוץ
+שלא נאמר בפירוש — "requiredTopics"/"excludedTopics" הם רק למה שהבריף דורש
+במפורש, לא לכל נושא שמוזכר בו. התוכנית שלך תיבדק אחר כך שהיא באמת מכבדת
+את מה שאתה עצמך מחלץ כאן.
+
 החזר אך ורק JSON תקין בפורמט הבא, בלי שום טקסט לפני או אחרי:
 {
   "premise": "משפט אחד שמתאר את הרעיון המרכזי של הסרטון",
+  "constraints": { "requiredTopics": [], "excludedTopics": [] },
   "beatPlan": ["הוק", "גוף", "סיום"],
   "selections": [
     { "index": 0, "score": 0.9, "beat": "הוק", "reason": "עד 12 מילים — למה זה ההוק" },
@@ -94,8 +119,17 @@ ${items}
 type LlmPlan = {
   premise: string;
   beatPlan: string[];
+  constraints?: LlmConstraints;
   choices: LlmChoice[];
 };
+
+/** Joins a candidate's speech + visual description into one lowercased blob for a topic substring check. */
+function candidateText(c: CandidateSegment): string {
+  return [c.text, c.visualSummary, ...(c.visualTags ?? [])]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
 
 /** How many seconds into the cut the hook must land, per the researched
  * short-form guidelines already used elsewhere in this prompt. */
@@ -167,6 +201,34 @@ export function validatePlan(
     }
   }
 
+  // Mechanically check the plan against constraints the model itself
+  // extracted from the brief — catches the model stating an explicit
+  // requirement and then not actually honoring it in `choices`.
+  const chosenText = plan.choices
+    .map((c) => shortlist[c.index])
+    .filter((c): c is CandidateSegment => c !== undefined)
+    .map(candidateText)
+    .join(" | ");
+
+  for (const topic of plan.constraints?.requiredTopics ?? []) {
+    if (!topic.trim()) continue;
+    if (!chosenText.includes(topic.toLowerCase())) {
+      return {
+        ok: false,
+        reason: `Required topic "${topic}" (the plan's own extracted constraint) is not covered by any selected moment.`,
+      };
+    }
+  }
+  for (const topic of plan.constraints?.excludedTopics ?? []) {
+    if (!topic.trim()) continue;
+    if (chosenText.includes(topic.toLowerCase())) {
+      return {
+        ok: false,
+        reason: `Excluded topic "${topic}" (the plan's own extracted constraint) appears in a selected moment.`,
+      };
+    }
+  }
+
   return { ok: true };
 }
 
@@ -176,9 +238,18 @@ function parsePlan(text: string): LlmPlan {
   if (!Array.isArray(parsed.selections)) {
     throw new Error("LLM selection response missing a 'selections' array.");
   }
+  const rawConstraints = parsed.constraints ?? {};
   return {
     premise: String(parsed.premise ?? ""),
     beatPlan: Array.isArray(parsed.beatPlan) ? parsed.beatPlan.map(String) : [],
+    constraints: {
+      requiredTopics: Array.isArray(rawConstraints.requiredTopics)
+        ? rawConstraints.requiredTopics.map(String)
+        : [],
+      excludedTopics: Array.isArray(rawConstraints.excludedTopics)
+        ? rawConstraints.excludedTopics.map(String)
+        : [],
+    },
     choices: parsed.selections.map(
       (s: {
         index: unknown;
@@ -221,11 +292,11 @@ export class LlmContentSelector implements ContentSelector {
     this.client = new Anthropic({ apiKey });
   }
 
-  async select(request: SelectionRequest): Promise<SelectedSegment[]> {
-    if (request.candidates.length === 0) return [];
+  async select(request: SelectionRequest): Promise<SelectionResult> {
+    if (request.candidates.length === 0) return { selections: [] };
 
     const shortlist = await this.buildShortlist(request);
-    if (shortlist.length === 0) return [];
+    if (shortlist.length === 0) return { selections: [] };
 
     const basePrompt = buildPrompt(request, shortlist);
     let plan = await this.requestPlan(basePrompt);
@@ -264,7 +335,7 @@ export class LlmContentSelector implements ContentSelector {
     // actually survived rather than trusting the pre-cap guarantee.
     const survivingIndexes = new Set(chosen.map(({ choice }) => choice.index));
 
-    return chosen.map(({ candidate, choice }, order) => {
+    const selections = chosen.map(({ candidate, choice }, order) => {
       const source =
         choice.videoFrom !== undefined && survivingIndexes.has(choice.videoFrom)
           ? shortlist[choice.videoFrom]
@@ -288,6 +359,8 @@ export class LlmContentSelector implements ContentSelector {
           : {}),
       };
     });
+
+    return { selections, premise: plan.premise, beatPlan: plan.beatPlan, shortlist };
   }
 
   private async requestPlan(prompt: string): Promise<LlmPlan> {
@@ -319,7 +392,7 @@ export class LlmContentSelector implements ContentSelector {
   private async buildShortlist(
     request: SelectionRequest,
   ): Promise<CandidateSegment[]> {
-    const preSelected = await this.shortlister.select({
+    const { selections: preSelected } = await this.shortlister.select({
       ...request,
       targetDurationSec: request.targetDurationSec * SHORTLIST_MULTIPLE,
     });

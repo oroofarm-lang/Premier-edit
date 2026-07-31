@@ -43,6 +43,15 @@ model Project {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  // Snapshot of the LLM selector's own reasoning from its most recent run —
+  // replaced on every re-run, same lifecycle as `selections` below. Null for
+  // the heuristic selector, which has no narrative premise or pre-filter
+  // shortlist to report. Lets the "Content selection" checkpoint show what
+  // the model was building and considered, not just what it picked.
+  selectionPremise       String?
+  selectionBeatPlan      String?
+  selectionShortlistJson String?
+
   mediaAssets    MediaAsset[]
   selections     Selection[]
   timelines      Timeline[]

@@ -1,3 +1,42 @@
+import type { OutputProfile } from "@/lib/generated/prisma/enums";
+
+/**
+ * Named beat structures per output profile, researched 2026-07-31 from how
+ * commercial AI editing tools (e.g. Chat Video Pro's Story Cutter) frame
+ * platform-specific structure — see
+ * docs/superpowers/specs/2026-07-31-chatvideopro-competitive-roadmap.md.
+ * Giving the LLM selector 2 named options to pick from (or blend) per
+ * profile replaces having it invent a beatPlan from nothing every run,
+ * which produced inconsistent structure across otherwise-similar cuts.
+ */
+export const STORY_STRUCTURES: Record<
+  OutputProfile,
+  { name: string; beats: string[] }[]
+> = {
+  REEL_SHORT: [
+    { name: "הוק-תוצאה", beats: ["הוק", "תוצאה/פאנץ׳", "הוכחה/פרט תומך", "קריאה לפעולה"] },
+    { name: "הוק-תהליך", beats: ["הוק", "תהליך/הכנה", "הגשה/סיום"] },
+  ],
+  SOCIAL_POST: [
+    { name: "בעיה-פתרון", beats: ["בעיה/צורך", "אמינות/הקשר", "שלבים", "תוצאה", "קריאה לפעולה"] },
+    { name: "הוק-גוף-שיא", beats: ["הוק", "גוף (כמה נקודות)", "שיא", "סיום"] },
+  ],
+  YOUTUBE_LONG: [
+    { name: "שלוש מערכות", beats: ["פתיחה/הצגה", "עימות/מכשול/פירוט", "פתרון/סיכום"] },
+    {
+      name: "פתיחה קרה מורחבת",
+      beats: ["פתיחה קרה", "הקשר", "מתח עולה", "פתרון", "רפלקציה/סיכום"],
+    },
+  ],
+};
+
+/** Formats the named structures available for one profile, for the selection prompt. */
+export function describeStoryStructures(profile: OutputProfile): string {
+  return STORY_STRUCTURES[profile]
+    .map((s) => `- "${s.name}": ${s.beats.join(" -> ")}`)
+    .join("\n");
+}
+
 /**
  * Short-form social video editing heuristics, researched 2026-07-30 for the
  * LLM-backed content selector. These are aggregated industry consensus from
