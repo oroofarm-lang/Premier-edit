@@ -20,6 +20,12 @@ export type CandidateSegment = {
    */
   visualSummary?: string | null;
   visualTags?: string[];
+  /**
+   * e.g. "close-up", "medium", "wide" — the strongest available signal for
+   * "this is a person talking to camera," which is the classic B-roll
+   * opportunity (see LlmContentSelector's videoFrom prompt).
+   */
+  visualShotType?: string | null;
 };
 
 export type SelectedSegment = {

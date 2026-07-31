@@ -60,6 +60,7 @@ export async function runContentSelection(
       );
       const visualSummary = visual?.summary ?? null;
       const visualTags = visual ? (JSON.parse(visual.tagsJson) as string[]) : [];
+      const visualShotType = visual?.shotType ?? null;
 
       if (segment.text === "") {
         // No speech at all (silent B-roll, or nothing Whisper could
@@ -76,6 +77,7 @@ export async function runContentSelection(
         text: segment.text,
         visualSummary,
         visualTags,
+        visualShotType,
       });
     }
   }
