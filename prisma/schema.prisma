@@ -66,7 +66,7 @@ model MediaAsset {
   createdAt     DateTime   @default(now())
 
   transcript      Transcript?
-  visualAnalysis  VisualAnalysis?
+  visualAnalyses  VisualAnalysis[]
   selections      Selection[]      @relation("SelectionSource")
   videoForSelections Selection[]   @relation("SelectionVideoOverride")
 }
@@ -82,20 +82,32 @@ model Transcript {
   createdAt    DateTime    @default(now())
 }
 
-// Per-clip visual understanding — what a vision-capable model sees in a few
-// sampled frames, independent of whatever was said. Content selection uses
-// this alongside the transcript so a silent or sparsely-spoken clip can still
+// Per-segment visual understanding — what a vision-capable model sees in a
+// few sampled frames from one time range within a clip, independent of
+// whatever was said. One row per (mediaAsset, time range): a long clip cut
+// into several transcript segments gets a separate description per segment,
+// because two moments in the same file can look completely different (see
+// CLAUDE.md task #45 — a single per-file summary made every candidate from
+// one source describe identically, which is part of why the B-roll selector
+// never had a visual reason to pick videoFrom). Content selection uses this
+// alongside the transcript so a silent or sparsely-spoken segment can still
 // be picked on visual merit (e.g. a clean product close-up).
 model VisualAnalysis {
   id           String      @id @default(cuid())
   mediaAsset   MediaAsset  @relation(fields: [mediaAssetId], references: [id])
-  mediaAssetId String      @unique
+  mediaAssetId String
+  startSec     Float
+  endSec       Float
   engine       String
   summary      String
   shotType     String?
   tagsJson     String
   qualityNotes String?
   createdAt    DateTime    @default(now())
+
+  // Re-running content selection must not re-pay for the same segment's
+  // vision call — transcript segment boundaries are stable once transcribed.
+  @@unique([mediaAssetId, startSec, endSec])
 }
 
 model Selection {

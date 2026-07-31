@@ -1,19 +1,32 @@
 import { prisma } from "@/lib/db";
 import { ClaudeVisionAnalyzer } from "./claude-vision";
+import { getAssetSegments } from "@/lib/selection/segments";
 import type { VisionAnalyzer } from "./types";
 
 export type VisionSummary = {
   analyzed: number;
   skipped: number;
-  failed: { filePath: string; error: string }[];
+  failed: { filePath: string; startSec: number; endSec: number; error: string }[];
 };
 
 // Same duplicate-invocation hazard as transcription — see run.ts there.
 const inFlight = new Set<string>();
 
+type PendingSegment = {
+  mediaAssetId: string;
+  filePath: string;
+  durationSec: number;
+  startSec: number;
+  endSec: number;
+};
+
 /**
- * Describes, visually, every video asset in the project that doesn't have an
- * analysis yet. Audio-only assets have nothing to look at and are skipped.
+ * Describes, visually, every not-yet-analyzed (asset, time range) pair in the
+ * project. The unit of work is a segment, not a file: a long clip covered by
+ * several transcript segments gets one vision call per segment, so two
+ * moments in the same file can end up with different descriptions instead of
+ * all sharing one file-level summary (see CLAUDE.md task #45). Audio-only
+ * assets have nothing to look at and are skipped.
  */
 export async function runVisionAnalysis(
   projectId: string,
@@ -30,35 +43,66 @@ export async function runVisionAnalysis(
   }
 }
 
+/** Exact-match key for "have we already analyzed this range of this asset." */
+function segmentKey(startSec: number, endSec: number): string {
+  return `${startSec}:${endSec}`;
+}
+
 async function runVisionAnalysisInner(
   projectId: string,
   analyzer: VisionAnalyzer,
 ): Promise<VisionSummary> {
   const assets = await prisma.mediaAsset.findMany({
-    where: { projectId, visualAnalysis: null },
+    where: { projectId },
+    include: {
+      transcript: true,
+      visualAnalyses: { select: { startSec: true, endSec: true } },
+    },
     orderBy: { filePath: "asc" },
   });
 
   const summary: VisionSummary = { analyzed: 0, skipped: 0, failed: [] };
+  const pending: PendingSegment[] = [];
 
-  const pending = assets.filter((asset) => {
+  for (const asset of assets) {
     if (asset.kind !== "VIDEO" || asset.durationSec === null) {
       summary.skipped += 1;
-      return false;
+      continue;
     }
-    return true;
-  });
 
-  async function saveAnalysis(mediaAssetId: string, result: {
-    engine: string;
-    summary: string;
-    shotType: string | null;
-    tags: string[];
-    qualityNotes: string | null;
-  }) {
+    const alreadyAnalyzed = new Set(
+      asset.visualAnalyses.map((v) => segmentKey(v.startSec, v.endSec)),
+    );
+
+    for (const segment of getAssetSegments(asset)) {
+      if (alreadyAnalyzed.has(segmentKey(segment.startSec, segment.endSec))) {
+        continue;
+      }
+      pending.push({
+        mediaAssetId: asset.id,
+        filePath: asset.filePath,
+        durationSec: asset.durationSec,
+        startSec: segment.startSec,
+        endSec: segment.endSec,
+      });
+    }
+  }
+
+  async function saveAnalysis(
+    seg: PendingSegment,
+    result: {
+      engine: string;
+      summary: string;
+      shotType: string | null;
+      tags: string[];
+      qualityNotes: string | null;
+    },
+  ) {
     await prisma.visualAnalysis.create({
       data: {
-        mediaAssetId,
+        mediaAssetId: seg.mediaAssetId,
+        startSec: seg.startSec,
+        endSec: seg.endSec,
         engine: result.engine,
         summary: result.summary,
         shotType: result.shotType,
@@ -70,38 +114,56 @@ async function runVisionAnalysisInner(
 
   if (analyzer.describeMany) {
     const outcomes = await analyzer.describeMany(
-      pending.map((a) => ({ filePath: a.filePath, durationSec: a.durationSec as number })),
+      pending.map((s) => ({
+        filePath: s.filePath,
+        durationSec: s.durationSec,
+        segmentStartSec: s.startSec,
+        segmentEndSec: s.endSec,
+      })),
     );
-    const byPath = new Map(pending.map((a) => [a.filePath, a]));
-    for (const outcome of outcomes) {
-      const asset = byPath.get(outcome.filePath);
-      if (!asset) continue;
+    // Positional correlation, not a filePath map — the same file appears
+    // once per segment, so a filePath-keyed lookup would collide and only
+    // keep the last segment's outcome. See VisionAnalyzer.describeMany.
+    for (let i = 0; i < pending.length; i++) {
+      const seg = pending[i];
+      const outcome = outcomes[i];
       if (!outcome.ok) {
-        summary.failed.push({ filePath: outcome.filePath, error: outcome.error });
+        summary.failed.push({
+          filePath: seg.filePath,
+          startSec: seg.startSec,
+          endSec: seg.endSec,
+          error: outcome.error,
+        });
         continue;
       }
       try {
-        await saveAnalysis(asset.id, outcome.result);
+        await saveAnalysis(seg, outcome.result);
         summary.analyzed += 1;
       } catch (error) {
         summary.failed.push({
-          filePath: outcome.filePath,
+          filePath: seg.filePath,
+          startSec: seg.startSec,
+          endSec: seg.endSec,
           error: error instanceof Error ? error.message : String(error),
         });
       }
     }
   } else {
-    for (const asset of pending) {
+    for (const seg of pending) {
       try {
         const result = await analyzer.describeClip({
-          filePath: asset.filePath,
-          durationSec: asset.durationSec as number,
+          filePath: seg.filePath,
+          durationSec: seg.durationSec,
+          segmentStartSec: seg.startSec,
+          segmentEndSec: seg.endSec,
         });
-        await saveAnalysis(asset.id, result);
+        await saveAnalysis(seg, result);
         summary.analyzed += 1;
       } catch (error) {
         summary.failed.push({
-          filePath: asset.filePath,
+          filePath: seg.filePath,
+          startSec: seg.startSec,
+          endSec: seg.endSec,
           error: error instanceof Error ? error.message : String(error),
         });
       }

@@ -88,6 +88,11 @@ export class ClaudeVisionAnalyzer implements VisionAnalyzer {
   }
 
   async describeClip(input: VisionClipInput): Promise<ClipVisualDescription> {
+    const range =
+      input.segmentStartSec !== undefined && input.segmentEndSec !== undefined
+        ? { startSec: input.segmentStartSec, endSec: input.segmentEndSec }
+        : undefined;
+
     return withExtractedFrames(
       input.filePath,
       input.durationSec,
@@ -120,6 +125,7 @@ export class ClaudeVisionAnalyzer implements VisionAnalyzer {
         }
         return parseJsonResponse(textBlock.text);
       },
+      range,
     );
   }
 

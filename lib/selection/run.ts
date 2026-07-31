@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { HeuristicContentSelector } from "./heuristic";
 import { LlmContentSelector } from "./llm-selector";
 import { runVisionAnalysis } from "@/lib/vision/run";
+import { getAssetSegments } from "./segments";
 import {
   PROFILE_TARGET_SECONDS,
   type CandidateSegment,
@@ -43,47 +44,36 @@ export async function runContentSelection(
   const project = await prisma.project.findUniqueOrThrow({
     where: { id: projectId },
     include: {
-      mediaAssets: { include: { transcript: true, visualAnalysis: true } },
+      mediaAssets: { include: { transcript: true, visualAnalyses: true } },
     },
   });
 
   const candidates: CandidateSegment[] = [];
   for (const asset of project.mediaAssets) {
-    const visualSummary = asset.visualAnalysis?.summary ?? null;
-    const visualTags = asset.visualAnalysis
-      ? (JSON.parse(asset.visualAnalysis.tagsJson) as string[])
-      : [];
+    for (const segment of getAssetSegments(asset)) {
+      // Exact-range match: vision analysis is keyed on the very same segment
+      // boundaries this function computes, so different moments in one long
+      // clip carry their own description instead of sharing a file-level one
+      // (see CLAUDE.md task #45).
+      const visual = asset.visualAnalyses.find(
+        (v) => v.startSec === segment.startSec && v.endSec === segment.endSec,
+      );
+      const visualSummary = visual?.summary ?? null;
+      const visualTags = visual ? (JSON.parse(visual.tagsJson) as string[]) : [];
 
-    const segments = asset.transcript
-      ? (JSON.parse(asset.transcript.segmentsJson) as {
-          startSec: number;
-          endSec: number;
-          text: string;
-        }[])
-      : [];
-
-    if (segments.length > 0) {
-      for (const segment of segments) {
-        candidates.push({
-          mediaAssetId: asset.id,
-          filePath: asset.filePath,
-          startSec: segment.startSec,
-          endSec: segment.endSec,
-          text: segment.text,
-          visualSummary,
-          visualTags,
-        });
+      if (segment.text === "") {
+        // No speech at all (silent B-roll, or nothing Whisper could
+        // transcribe) — without visual proof this segment is worth nothing
+        // to a selector, so only add it once vision analysis has run.
+        if (!visual) continue;
       }
-    } else if (asset.visualAnalysis && asset.durationSec) {
-      // No speech at all (silent B-roll, or nothing Whisper could transcribe)
-      // — without this, a clip like that is invisible to selection no matter
-      // how visually relevant it is. One candidate spanning the full clip.
+
       candidates.push({
         mediaAssetId: asset.id,
         filePath: asset.filePath,
-        startSec: 0,
-        endSec: asset.durationSec,
-        text: "",
+        startSec: segment.startSec,
+        endSec: segment.endSec,
+        text: segment.text,
         visualSummary,
         visualTags,
       });

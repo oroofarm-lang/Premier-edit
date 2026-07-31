@@ -16,11 +16,17 @@ const SAMPLE_POINTS = [0.1, 0.5, 0.9];
  * image, so these come out right-side-up even for the phone/camera footage
  * that stores pixels landscape and flags a 90° rotation (see probe.ts) —
  * unlike ffprobe's raw width/height, we don't have to correct for that here.
+ *
+ * `range`, when given, samples the 10/50/90% points of that sub-range
+ * instead of the whole file — this is what makes two different transcript
+ * segments of one long clip get frames from their own moment rather than
+ * three frames that describe the file in general.
  */
 export async function withExtractedFrames<T>(
   videoFilePath: string,
   durationSec: number,
   run: (framePaths: string[]) => Promise<T>,
+  range?: { startSec: number; endSec: number },
 ): Promise<T> {
   if (!ffmpegPath) {
     throw new Error("ffmpeg-static did not resolve a binary path.");
@@ -29,8 +35,12 @@ export async function withExtractedFrames<T>(
   const workDir = await mkdtemp(path.join(tmpdir(), "premier-edit-frames-"));
 
   try {
+    const rangeStart = range ? Math.max(0, range.startSec) : 0;
+    const rangeEnd = range ? Math.min(durationSec, range.endSec) : durationSec;
+    const rangeSpan = Math.max(0, rangeEnd - rangeStart);
+
     const timestamps = SAMPLE_POINTS.map((fraction) =>
-      Math.max(0, Math.min(durationSec, durationSec * fraction)),
+      Math.max(rangeStart, Math.min(rangeEnd, rangeStart + rangeSpan * fraction)),
     );
 
     const framePaths = await Promise.all(
