@@ -11,6 +11,17 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-07-31 — Visual analysis moved from per-file to per-segment
+
+Task tracked since the B-roll work: the LLM selector never chose `videoFrom` on real footage, and the suspected cause was that `VisualAnalysis` was one row per `MediaAsset` — every transcript segment cut from the same long clip saw an identical `visualSummary`, so the model had no visual signal that one moment in a clip looks different from another. Fixed on `stage2-panel`, commit `81f5e87`, 29/29 tests passing.
+
+- **`VisualAnalysis` is now keyed on `(mediaAssetId, startSec, endSec)`** instead of being unique per asset. `lib/selection/segments.ts` is a new shared helper (`getAssetSegments`) that both `lib/vision/run.ts` (what needs a vision call) and `lib/selection/run.ts` (what becomes a candidate) call, so a segment's boundaries are computed exactly once and both sides agree on them by construction rather than by convention.
+- **`extract-frames.ts` now samples 10/50/90% of the *segment's own range*** when one is given, not the whole file — the actual mechanism that makes two segments of one clip get genuinely different frames.
+- **Migration deleted the old 49 per-file rows rather than trying to backfill them** — they don't correspond to any real segment's key under the new schema, and visual analysis is best-effort/auto-regenerating by design (same as the original architecture decision), so the next selection run just recreates them at the finer grain for free.
+- **Verified on the real חליטת תה project, not just unit tests.** Re-ran content selection end to end (247s — genuinely slower now, since vision analysis is one call per transcript segment instead of one per file, e.g. `0X7A1694.MP4` alone went from 1 call to 7). Confirmed in the database that the 7 segments of that one file now carry 7 distinct Hebrew descriptions (kettle being closed, kettle with glass lid, kettle with a man's hand near the handle, etc.) instead of one shared summary. Selection still produced a clean 7-clip, no-error cut.
+- **Still open, now with better evidence:** this run *still* chose zero `videoFrom` overrides even with real per-segment visual differentiation available. That weakens (doesn't fully rule out) the segmentation theory as the sole cause — worth revisiting the B-roll prompt itself next if the pattern repeats on another project, rather than assuming this fix alone will make it fire.
+- **A stale running dev server needs a restart after a Prisma schema migration** — its already-loaded generated client doesn't pick up the new fields, and the failure mode is a confusing "Unknown field for include statement" error that looks like a code bug rather than a stale-process one.
+
 ## 2026-07-31 — B-roll implemented: a moment's picture and sound can now come from different clips
 
 Spec `docs/superpowers/specs/2026-07-31-broll-video-override-design.md`, plan executed on `stage2-panel` (not `editing-quality` as the spec said — that branch has no `premiere-panel/`, and `stage2-panel` already has `editing-quality` merged in). Eight commits, `3193e3e`..`52563ba`, 25/25 tests passing.
