@@ -15,8 +15,10 @@ const { buildSequence, fetchProjects, fetchPlan, APP_ORIGIN } = require("./build
 let loadedPlan = null;
 let loadedProjectId = null;
 
-function setStatus(text) {
-  document.getElementById("status").textContent = text;
+function setStatus(text, { loading = false, error = false } = {}) {
+  document.getElementById("status-text").textContent = text;
+  document.getElementById("status-spinner").hidden = !loading;
+  document.getElementById("status").classList.toggle("error", error);
 }
 
 function log(text) {
@@ -76,7 +78,7 @@ async function onLoadPlan() {
     return;
   }
 
-  setStatus("Loading plan…");
+  setStatus("Loading plan…", { loading: true });
   document.getElementById("build-button").disabled = true;
 
   try {
@@ -106,6 +108,7 @@ async function onLoadPlan() {
     if (missing.length > 0) {
       setStatus(
         `${missing.length} source file(s) are missing from disk — cannot build.`,
+        { error: true },
       );
       for (const filePath of missing) log(`Missing: ${filePath}`);
     } else {
@@ -116,7 +119,7 @@ async function onLoadPlan() {
       );
     }
   } catch (err) {
-    setStatus(`Could not load plan: ${err.message}`);
+    setStatus(`Could not load plan: ${err.message}`, { error: true });
   }
 }
 
@@ -136,14 +139,14 @@ async function onBuildClicked() {
 async function onConfirmed() {
   document.getElementById("confirm-dialog").close();
   document.getElementById("build-button").disabled = true;
-  setStatus("Building…");
+  setStatus("Building…", { loading: true });
 
   try {
     const result = await buildSequence(loadedProjectId, log);
     setStatus(`Done — "${result.sequenceName}" with ${result.clips} clips.`);
     await refreshPremiereState();
   } catch (err) {
-    setStatus(`Build failed: ${err.message}`);
+    setStatus(`Build failed: ${err.message}`, { error: true });
     log(`Error: ${err.message}`);
   } finally {
     document.getElementById("build-button").disabled = false;

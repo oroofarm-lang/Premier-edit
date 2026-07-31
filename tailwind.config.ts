@@ -15,10 +15,30 @@ const config: Config = {
     extend: {
       borderRadius: {
         lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
+        md: "var(--radius-md)",
         sm: "calc(var(--radius) - 4px)",
       },
+      fontFamily: {
+        mono: ["var(--font-geist-mono)"],
+      },
+      boxShadow: {
+        glow: "0 0 15px rgb(124 58 237 / 0.3)",
+        "glow-cyan": "0 0 15px rgb(6 182 212 / 0.25)",
+      },
+      keyframes: {
+        orbit: {
+          "0%": { transform: "rotate(0deg)" },
+          "100%": { transform: "rotate(360deg)" },
+        },
+      },
+      animation: {
+        orbit: "orbit 1.2s linear infinite",
+      },
       colors: {
+        success: {
+          DEFAULT: oklchVar("--success"),
+          foreground: oklchVar("--success-foreground"),
+        },
         background: oklchVar("--background"),
         foreground: oklchVar("--foreground"),
         card: {

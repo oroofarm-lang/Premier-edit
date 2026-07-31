@@ -1,8 +1,21 @@
+:root {
+  --cosmic-bg: #0b0d17;
+  --cosmic-surface: #121526;
+  --cosmic-border: #1b1f35;
+  --cosmic-violet: #7c3aed;
+  --cosmic-cyan: #06b6d4;
+  --cosmic-text: #f8fafc;
+  --cosmic-muted: #94a3b8;
+  --cosmic-red: #ef4444;
+  --cosmic-green: #10b981;
+}
+
 body {
   margin: 0;
   padding: 12px;
   font-family: -apple-system, sans-serif;
-  color: var(--uxp-host-text-color, #eee);
+  background-color: var(--cosmic-bg);
+  color: var(--uxp-host-text-color, var(--cosmic-text));
 }
 
 .block {
@@ -18,9 +31,12 @@ body {
 #plan-list,
 #log {
   margin: 6px 0 0 0;
-  padding-left: 18px;
+  padding: 6px 6px 6px 18px;
   max-height: 220px;
   overflow-y: auto;
+  background-color: var(--cosmic-surface);
+  border: 1px solid var(--cosmic-border);
+  border-radius: 6px;
 }
 
 #plan-list li,
@@ -37,8 +53,42 @@ body {
 .muted {
   opacity: 0.7;
   font-size: 11px;
+  color: var(--cosmic-muted);
 }
 
 #project-picker {
   width: 100%;
+}
+
+#status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#status.error {
+  color: var(--cosmic-red);
+}
+
+@keyframes orbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--cosmic-violet);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: orbit 0.9s linear infinite;
+}
+
+.spinner[hidden] {
+  display: none;
 }
