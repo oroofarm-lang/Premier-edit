@@ -11,7 +11,14 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
-## 2026-07-31 — Proper RTL support, web app and UXP panel
+## 2026-07-31 — RTL reverted same day: user decided to keep the product English/LTR
+
+- Immediately after the RTL work below shipped and was verified, the user said it was a mistake and asked to keep everything in English and LTR instead.
+- Reverted cleanly with `git revert be68695` → commit `2493953` on `stage2-panel`. All 12 files (web app + panel) went back to their pre-RTL state in one commit; `npx tsc --noEmit` and `npx vitest run` (46/46) confirmed clean immediately after, and a live browser check confirmed `<html lang="en">` with no `dir` attribute, matching the original state.
+- The RTL spec (`docs/superpowers/specs/2026-07-31-rtl-support-design.md`) is marked REVERTED rather than deleted — the bidi lesson in it (plain English text mixing digits/punctuation garbles under an ambient RTL direction with no explicit override) is still true and worth keeping if RTL is ever revisited.
+- Net effect: this was a same-day round trip. No code debt left behind — a clean revert of a clean commit, not a patch-on-a-patch.
+
+## 2026-07-31 — Proper RTL support, web app and UXP panel (shipped, then reverted same day — see entry above)
 
 - User asked directly: add RTL, figure out what's needed, and keep working until it's actually fixed. Ran it as a self-paced loop rather than a single pass, because the first attempt looked done and wasn't.
 - **Investigated before deciding anything.** The product had never had a document direction set — only scattered per-element `dir="auto"` patches added incrementally as features shipped. A full grep found the physical-direction-class scope genuinely small (~10 occurrences, all icon-spacing in `button.tsx`/`badge.tsx`) and confirmed Tailwind 3.4.1 already has built-in `rtl:`/`ltr:` variants, no plugin needed. Decision, recorded in `docs/superpowers/specs/2026-07-31-rtl-support-design.md`: flip the whole document to RTL (`dir="rtl" lang="he"`) on both the web app and the panel, rather than continuing the per-element patch approach — the standard way a Hebrew-primary product does this, not a stylistic toss-up.

@@ -1,6 +1,6 @@
 # RTL support for the web app and the UXP panel
 
-**Status:** Approved (self-directed — user delegated the decision explicitly: "תגיע למצב שאתה מסדר את הRTL... זה בעצם ה-goal")
+**Status:** REVERTED 2026-07-31, same day. The user asked for RTL, the work below shipped and was verified (`be68695`), then the user said it was a mistake and asked to keep everything English/LTR instead. Reverted cleanly via `git revert be68695` → commit `2493953` on `stage2-panel`. Left in place for history, not deleted — the bidi lesson in it (plain English text with digits/punctuation garbles under an RTL ambient direction) is still true and worth knowing if RTL is ever revisited.
 **Date:** 2026-07-31
 
 ## Problem
