@@ -11,6 +11,16 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-07-31 — Roadmap tasks #46-48 shipped: named structures, visible shortlist, self-checked constraints
+
+Commit `de9a44e` on `stage2-panel`. First three items from the chatvideopro.com roadmap, landed together (same files).
+
+- **#46 Named per-platform story structures**: `lib/editing/social-guidelines.ts` gained 2 named beat structures per `OutputProfile`; the selection prompt now asks the model to pick or blend one instead of inventing a `beatPlan` from nothing every run.
+- **#47 Visible pre-filter checkpoint**: `ContentSelector.select()` changed from returning a bare `SelectedSegment[]` to `{ selections, premise?, beatPlan?, shortlist? }` — a real interface change across `heuristic.ts`, `llm-selector.ts`, and `run.ts`. The LLM's premise, chosen structure, and full pre-filter shortlist (previously computed and thrown away) now persist on three new nullable `Project` columns and render in the UI: a premise/structure line above the picks, plus a collapsible list of every candidate considered but not chosen.
+- **#48 Self-checked brief constraints**: the model extracts explicit "must include X" / "must not include Y" instructions from the brief into a `constraints` field, and `validatePlan` mechanically checks the final choices against the model's own extracted constraints — same reject-and-retry mechanism as the existing hook-window/diversity checks.
+- **A debugging trap worth remembering**: right after the migration, a "why is this NULL" investigation nearly went down a wrong path (stale-client theory) — added a temporary `console.log` right before the `$transaction`, confirmed `premise`/`beatPlan`/`shortlist` were correctly populated in memory, and it turned out the persisted values *were* actually there all along — the empty-looking DB checks had just been timed against an earlier, still-in-flight run (several background waits were overlapping). Lesson: when several async verification runs are in flight, re-check timestamps/mtimes before trusting a "still NULL" read as proof of a bug.
+- **Verified end-to-end on the real חליטת תה project**: premise and a named structure ("הוק ← גוף (הכנה) ← סיום") render above the 6 picks, with 17 considered-but-unused candidates listed collapsed below. Task #48's constraint checks are unit-tested (4 new tests) but not yet exercised live with a brief that actually states an explicit constraint — this project's brief doesn't have one, so empty-constraints is the correct (untested-live) path.
+
 ## 2026-07-31 — videoFrom prompt reworked around shot type; still zero picks, and that looks correct
 
 Follow-up to the per-segment visual analysis fix above. Commit `5a0d5f9` on `stage2-panel`.
