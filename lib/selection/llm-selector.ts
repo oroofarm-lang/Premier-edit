@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { SOCIAL_EDITING_GUIDELINES, describeStoryStructures } from "@/lib/editing/social-guidelines";
+import { assembleExpertSections } from "@/lib/experts";
+import { HOOK_WINDOW_SEC } from "@/lib/experts/hook";
 import { HeuristicContentSelector } from "./heuristic";
 import type {
   CandidateSegment,
@@ -65,14 +66,14 @@ function buildPrompt(
 בריף: ${request.brief ?? "(לא ניתן בריף — תבחר את הרגעים הכי חזקים מבחינה חזותית ותוכנית)"}
 משך יעד: ${request.targetDurationSec} שניות (זה לא חובה מדויקת, אבל תישאר קרוב)
 
-${SOCIAL_EDITING_GUIDELINES}
+${assembleExpertSections({
+  stage: "selection",
+  outputProfile: request.outputProfile,
+  targetDurationSec: request.targetDurationSec,
+})}
 
 רשימת המועמדים (מספר # הוא המזהה שאתה מחזיר):
 ${items}
-
-מבני סיפור מוכרים ליעד הזה — בחר אחד שמתאים לתוכן, או מזג בין שניים אם באמת
-מתאים יותר:
-${describeStoryStructures(request.outputProfile)}
 
 לפני שאתה בוחר, תכנן: מה הפרמיסה של הסרטון במשפט אחד, ובאיזה מבנה מהרשימה
 למעלה אתה בונה אותו (או שילוב שלהם).
@@ -133,9 +134,6 @@ function candidateText(c: CandidateSegment): string {
     .toLowerCase();
 }
 
-/** How many seconds into the cut the hook must land, per the researched
- * short-form guidelines already used elsewhere in this prompt. */
-const HOOK_WINDOW_SEC = 3;
 /** How many times the same source clip may appear before a plan is rejected —
  * this is the exact "reused one long clip four times" failure that motivated
  * building the LLM selector in the first place (see CLAUDE.md). */

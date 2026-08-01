@@ -1,21 +1,22 @@
+import type { OutputProfile } from "@/lib/generated/prisma/enums";
+import { ENGLISH_FILLERS, HEBREW_FILLERS, HEBREW_STOPWORDS } from "@/lib/experts/hebrew";
+import { SHOT_DURATION_SEC } from "@/lib/experts/pacing";
 import type {
   ContentSelector,
   SelectionRequest,
   SelectionResult,
 } from "./types";
 
-// Very common Hebrew (and a few English) words carry no topical signal, so
-// matching on them would make every segment look equally relevant.
-const STOPWORDS = new Set([
-  "של", "את", "עם", "על", "אני", "אנחנו", "אתה", "הוא", "היא", "הם",
-  "זה", "זאת", "יש", "אין", "לא", "כן", "גם", "רק", "אבל", "או",
-  "כי", "אם", "מה", "מי", "איך", "כמה", "היום", "פה", "שם", "כל",
-  "היה", "היתה", "להיות", "אז", "ואז", "ככה", "בעצם", "פשוט", "ממש",
+// Words with no topical signal, from the Hebrew expert so there is one list
+// rather than a copy per consumer. The English additions are here because
+// they only matter to keyword matching, not to the language knowledge itself.
+const STOPWORDS = new Set<string>([
+  ...HEBREW_STOPWORDS,
   "the", "and", "for", "with", "this", "that", "you", "are", "was",
 ]);
 
 // Speech disfluencies — a take full of these is usually the worse take.
-const FILLERS = ["אהה", "אמם", "כאילו", "יעני", "אה", "אמ", "um", "uh"];
+const FILLERS: readonly string[] = [...HEBREW_FILLERS, ...ENGLISH_FILLERS];
 
 /** Below this, a segment hurts the cut more than the extra seconds help. */
 const MIN_SCORE = 0.15;
@@ -75,15 +76,35 @@ function fillerPenalty(text: string): number {
 }
 
 /**
- * Segments that are a fraction of a second are usually fragments, and very long
- * ones are usually rambling. Favour something speakable in a short-form cut.
+ * How well a segment's length suits the target format, scored against the
+ * pacing expert's per-profile ranges.
+ *
+ * This used to be one fixed curve that peaked at 3-10s for every profile,
+ * which put it in direct conflict with the rest of the system: `validatePlan`
+ * rejects any plan whose opening moment is longer than the 3s hook window,
+ * while this function ranked those very moments at 0.7 and 3-10s ones at 1.0.
+ * Since this selector also builds the LLM selector's shortlist, short punchy
+ * moments could be filtered out before the LLM ever saw them — and then the
+ * only plans it could write were ones that fail validation. Profile-aware
+ * ranges remove that conflict, and also stop long-form footage from being
+ * scored as if it were a reel.
  */
-function durationFitness(seconds: number): number {
-  if (seconds < 1) return 0.1;
-  if (seconds <= 3) return 0.7;
-  if (seconds <= 10) return 1;
-  if (seconds <= 20) return 0.6;
-  return 0.3;
+function durationFitness(seconds: number, profile: OutputProfile): number {
+  const { min, ideal, max } = SHOT_DURATION_SEC[profile];
+
+  if (seconds < min) {
+    // Fragments still score above zero — a 0.6s beat can be a real hook — but
+    // fall away fast as they get too short to read as a shot at all.
+    return Math.max(0.1, 0.7 * (seconds / min));
+  }
+  if (seconds <= max) {
+    // Full marks across the usable band, tapering slightly toward the edges so
+    // a moment near `ideal` still outranks one at the extreme.
+    const distance = Math.abs(seconds - ideal) / Math.max(ideal - min, max - ideal);
+    return 1 - 0.25 * Math.min(1, distance);
+  }
+  // Over the ceiling: usable if trimmed by hand, but not what we want to rank.
+  return Math.max(0.15, 0.6 * (max / seconds));
 }
 
 function describe(
@@ -132,7 +153,7 @@ export class HeuristicContentSelector implements ContentSelector {
         .join(" ");
       const relevance = briefRelevance(candidate.text, briefTokens, visualText);
       const filler = fillerPenalty(candidate.text);
-      const duration = durationFitness(seconds);
+      const duration = durationFitness(seconds, request.outputProfile);
 
       // Without a brief there is nothing to be relevant *to*, so lean entirely
       // on delivery signals rather than scoring everything as irrelevant.
