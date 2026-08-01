@@ -92,6 +92,7 @@ model MediaAsset {
   visualAnalyses  VisualAnalysis[]
   selections      Selection[]      @relation("SelectionSource")
   videoForSelections Selection[]   @relation("SelectionVideoOverride")
+  shots           Shot[]
 }
 
 model Transcript {
@@ -196,4 +197,32 @@ model ApprovalCheckpoint {
   note       String?
   createdAt  DateTime      @default(now())
   approvedAt DateTime?
+}
+
+/// A span of one clip worth considering for the video layer, found by
+/// deterministic ffmpeg analysis rather than by a model. Quality here is the
+/// two signals the user named — a camera movement that completes, and
+/// steadiness — plus sharpness and exposure as guards against unusable
+/// footage. See docs/superpowers/specs/2026-08-01-two-timeline-audio-spine-design.md.
+model Shot {
+  id           String     @id @default(cuid())
+  mediaAsset   MediaAsset @relation(fields: [mediaAssetId], references: [id])
+  mediaAssetId String
+  startSec     Float
+  endSec       Float
+  /// "scene-cut" when the span came from a detected hard cut, "motion-window"
+  /// when it was found by searching inside a continuous take.
+  source       String
+  stability            Float
+  movementCompleteness Float
+  /// Null when the appearance pass did not run or the filter was unavailable.
+  sharpness    Float?
+  exposure     Float?
+  qualityScore Float
+  createdAt    DateTime   @default(now())
+
+  // Re-running analysis on unchanged footage must not duplicate rows, and
+  // window boundaries are deterministic for a given clip and settings.
+  @@unique([mediaAssetId, startSec, endSec])
+  @@index([mediaAssetId, qualityScore])
 }

@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
-    "generate:agent-notes": "tsx scripts/generate-agent-notes.ts"
+    "generate:agent-notes": "tsx scripts/generate-agent-notes.ts",
+    "analyze:shots": "tsx scripts/analyze-shots.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
