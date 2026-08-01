@@ -42,7 +42,7 @@ export const premiereCraftExpert: Expert = {
   summary:
     "יודע מה שכבת הביצוע בפרמיר באמת יכולה לעשות ומה נשאר ידני — ושומר על גבול האוטומציה במקום להרחיב אותו.",
   stages: ["selection", "execution"],
-  worksWith: ["qc", "pacing"],
+  worksWith: ["qc", "pacing", "cinematography"],
   sources: [
     "@adobe/premierepro v26.3.0 .d.ts",
     "https://github.com/AdobeDocs/uxp-premiere-pro-samples",

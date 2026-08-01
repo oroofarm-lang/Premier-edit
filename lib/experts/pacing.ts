@@ -85,7 +85,7 @@ export const pacingExpert: Expert = {
   summary:
     "קובע כמה רגעים צריכים להיות בקאט ובאיזה אורך, ובודק דטרמיניסטית שהקצב לא אחיד מדי או איטי מדי.",
   stages: ["selection", "qc"],
-  worksWith: ["hook", "narrative-structure", "qc"],
+  worksWith: ["hook", "narrative-structure", "qc", "cinematography"],
   sources: [
     "https://aibrify.com/blog/short-form-video-editing-captions-b-roll-guide",
     "https://blog.brandghost.ai/posts/instagram-reels-best-practices-for-creators/",

@@ -23,7 +23,7 @@ export const framingExpert: Expert = {
   summary:
     "מגדיר את אוצר המילים של סוגי הצילום ומה נחשב שוט שאפשר להשתמש בו — מזין את שלב הראייה.",
   stages: ["vision"],
-  worksWith: ["food-and-product", "platform-reels"],
+  worksWith: ["food-and-product", "platform-reels", "cinematography"],
   sources: ["lib/vision/claude-vision.ts", "lib/selection/llm-selector.ts"],
 
   promptSection(ctx) {

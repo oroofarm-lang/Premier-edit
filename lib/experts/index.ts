@@ -1,5 +1,6 @@
 import type { Expert, ExpertContext, PipelineStage } from "./types";
 
+import { cinematographyExpert } from "./cinematography";
 import { foodAndProductExpert } from "./food-and-product";
 import { framingExpert } from "./framing";
 import { hebrewExpert } from "./hebrew";
@@ -31,6 +32,7 @@ export const EXPERTS: readonly Expert[] = [
   framingExpert,
   foodAndProductExpert,
   hebrewExpert,
+  cinematographyExpert,
   premiereCraftExpert,
   qcExpert,
 ];

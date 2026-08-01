@@ -63,6 +63,7 @@ async function persistShots(
       source: w.source,
       stability: w.stability,
       movementCompleteness: w.movementCompleteness,
+      activity: w.activity,
       sharpness: w.sharpness,
       exposure: w.exposure,
       qualityScore: w.qualityScore,
