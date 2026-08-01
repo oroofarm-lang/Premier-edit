@@ -24,6 +24,18 @@ export type ShotCatalogueResult = {
   clipsAnalyzed: number;
   clipsSkipped: number;
   shotsWritten: number;
+  /** Picture-layer placements dropped because the shots they pointed at were replaced. */
+  placementsInvalidated: number;
+  /**
+   * Why each skipped clip was skipped.
+   *
+   * This exists because the first version swallowed the reason entirely: a
+   * run came back reporting 10 of 11 clips skipped and 0 shots written, with
+   * no way to tell whether the footage had moved, ffmpeg had failed, or the
+   * machine was simply overloaded. Silently dropping most of the input is
+   * exactly the failure that must not be invisible.
+   */
+  skipped: { fileName: string; error: string }[];
 };
 
 async function mapWithConcurrency<T, R>(
@@ -95,7 +107,19 @@ export async function runShotCatalogue(
       orderBy: { filePath: "asc" },
     });
 
-    let clipsSkipped = 0;
+    // A VideoPlacement points at a Shot, so shots that are about to be
+    // replaced cannot be deleted while placements still reference them —
+    // the foreign key rejects it, and the first version of this code
+    // swallowed that as a per-clip "skip", silently analysing one clip out of
+    // eleven. Clearing the picture layer first is also correct on its own
+    // terms: recomputing the catalogue moves window boundaries, so any
+    // placement built on the old ones is meaningless. Same reasoning as
+    // persistSelection clearing a pending refinement draft.
+    const { count: placementsInvalidated } = await prisma.videoPlacement.deleteMany({
+      where: { projectId },
+    });
+
+    const skipped: { fileName: string; error: string }[] = [];
     const counts = await mapWithConcurrency(assets, CONCURRENCY, async (asset) => {
       try {
         const { metrics, cuts } = await analyzeClip(asset.filePath);
@@ -109,17 +133,23 @@ export async function runShotCatalogue(
         );
         const windows = findShotWindows(metrics, cuts, durationSec, options);
         return await persistShots(asset.id, windows);
-      } catch {
-        // One unreadable file must not lose the whole folder's analysis.
-        clipsSkipped++;
+      } catch (err) {
+        // One unreadable file must not lose the whole folder's analysis —
+        // but the reason travels back with the result rather than vanishing.
+        skipped.push({
+          fileName: asset.filePath.split("/").pop() ?? asset.filePath,
+          error: err instanceof Error ? err.message.slice(0, 200) : String(err),
+        });
         return 0;
       }
     });
 
     return {
-      clipsAnalyzed: assets.length - clipsSkipped,
-      clipsSkipped,
+      clipsAnalyzed: assets.length - skipped.length,
+      clipsSkipped: skipped.length,
       shotsWritten: counts.reduce((sum, n) => sum + n, 0),
+      placementsInvalidated,
+      skipped,
     };
   } finally {
     inFlight.delete(projectId);
