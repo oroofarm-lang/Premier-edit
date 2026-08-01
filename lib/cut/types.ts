@@ -55,6 +55,36 @@ export type CutClip = {
   };
 };
 
+/**
+ * One span of the independent picture layer, from the two-timeline model:
+ * the audio spine decides what is said, this decides what is seen, and the
+ * two have different counts and boundaries.
+ *
+ * Distinct from `CutClip.videoOverride`, which is the older per-moment
+ * exception. When `videoLayer` is present it governs the whole picture track
+ * and the clips' own video is not used at all.
+ */
+export type VideoLayerClip = {
+  filePath: string;
+  fileName: string;
+  /** In/out inside the source file. */
+  sourceInSec: number;
+  sourceOutSec: number;
+  timelineStartSec: number;
+  timelineEndSec: number;
+  /**
+   * Whether this shot's own audio is kept. False for nearly everything —
+   * the spine already carries the speech — and true only where the shot has
+   * a sound effect worth hearing.
+   */
+  useSourceAudio: boolean;
+  sourceDurationSec: number;
+  /** The source's own frame rate; its in/out points are in ITS frames. */
+  fps: number | null;
+  width: number | null;
+  height: number | null;
+};
+
 export type CutTimeline = {
   name: string;
   /** Sequence frame rate. Sources with other rates get conformed by Premiere. */
@@ -63,4 +93,10 @@ export type CutTimeline = {
   height: number;
   durationSec: number;
   clips: CutClip[];
+  /**
+   * Present once the video-layout stage has run. Absent on projects that
+   * only have an audio spine, in which case each clip's own picture is used
+   * — which is what every build did before the two-timeline model.
+   */
+  videoLayer?: VideoLayerClip[];
 };

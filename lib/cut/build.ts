@@ -2,7 +2,7 @@ import path from "node:path";
 import { prisma } from "@/lib/db";
 import { snapToWordBoundary } from "./snap";
 import { resolveVideoOverride } from "./video-override";
-import type { CutClip, CutTimeline } from "./types";
+import type { CutClip, CutTimeline, VideoLayerClip } from "./types";
 import type { TranscriptWord } from "@/lib/transcription/types";
 
 /** Fallbacks for when the source material carries no usable video metadata. */
@@ -141,6 +141,8 @@ export async function buildCutTimeline(projectId: string): Promise<CutTimeline> 
     next.audioInSec = Math.max(0, next.sourceInSec - halfOverlap);
   }
 
+  const videoLayer = await buildVideoLayer(projectId);
+
   return {
     name: project.name,
     fps,
@@ -148,5 +150,47 @@ export async function buildCutTimeline(projectId: string): Promise<CutTimeline> 
     height,
     durationSec: Math.round(playhead * 1000) / 1000,
     clips,
+    ...(videoLayer.length > 0 ? { videoLayer } : {}),
   };
+}
+
+/**
+ * Reads the picture layer produced by the video-layout stage. Returns an
+ * empty array when that stage has not run, so a project with only an audio
+ * spine keeps building exactly as it did before the two-timeline model.
+ */
+async function buildVideoLayer(projectId: string): Promise<VideoLayerClip[]> {
+  const placements = await prisma.videoPlacement.findMany({
+    where: { projectId },
+    orderBy: { order: "asc" },
+    include: { shot: { include: { mediaAsset: true } } },
+  });
+
+  return placements.map((p) => {
+    const asset = p.shot.mediaAsset;
+    const span = p.timelineEndSec - p.timelineStartSec;
+    // The layout validator already guarantees the span fits inside the shot,
+    // but clamp anyway: a source in/out that runs past the file is the one
+    // error Premiere reports late and unhelpfully.
+    const sourceInSec = p.shot.startSec;
+    const sourceOutSec = Math.min(
+      p.shot.endSec,
+      asset.durationSec ?? p.shot.endSec,
+      sourceInSec + span,
+    );
+
+    return {
+      filePath: asset.filePath,
+      fileName: asset.filePath.split("/").pop() ?? "",
+      sourceInSec,
+      sourceOutSec,
+      timelineStartSec: p.timelineStartSec,
+      timelineEndSec: p.timelineEndSec,
+      useSourceAudio: p.useSourceAudio,
+      sourceDurationSec: asset.durationSec ?? sourceOutSec,
+      fps: asset.fps,
+      width: asset.width,
+      height: asset.height,
+    };
+  });
 }

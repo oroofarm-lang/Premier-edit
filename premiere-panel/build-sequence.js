@@ -48,6 +48,10 @@ async function ensureMediaImported(project, plan, log) {
       missing.push(clip.videoOverride.filePath);
     }
   }
+  // The picture layer draws on shots the audio spine may never touch.
+  for (const v of plan.videoLayer ?? []) {
+    if (!byName.has(v.fileName)) missing.push(v.filePath);
+  }
   const toImport = [...new Set(missing)];
 
   if (toImport.length > 0) {
@@ -66,6 +70,7 @@ async function ensureMediaImported(project, plan, log) {
     needed.add(clip.fileName);
     if (clip.videoOverride) needed.add(clip.videoOverride.fileName);
   }
+  for (const v of plan.videoLayer ?? []) needed.add(v.fileName);
   for (const fileName of needed) {
     const item = byName.get(fileName);
     if (!item) {
@@ -306,9 +311,63 @@ async function createSequenceMatchingFootage(project, sequenceName, plan, mediaB
   return created;
 }
 
+/**
+ * Builds the two-timeline cut: the audio spine on A1, and an independent
+ * picture layer on V1 that changes on its own rhythm.
+ *
+ * Both layers are placed with the same park-the-unwanted-half trick the
+ * B-roll path already proved. A spine clip is placed for its sound, with its
+ * own picture parked on the scratch video track; a picture clip is placed
+ * for its image, with its own sound parked on the scratch audio track —
+ * unless the layout marked it as carrying a sound effect worth keeping, in
+ * which case that audio lands on A2 under the narration instead.
+ */
+async function placeTwoLayers(project, sequence, plan, mediaByName, log) {
+  const editor = ppro.SequenceEditor.getEditor(sequence);
+
+  for (const clip of plan.clips) {
+    const item = mediaByName.get(clip.fileName);
+    setInOut(project, item, clip.sourceInSec, clip.sourceOutSec, `set in/out for ${clip.fileName}`);
+    overwriteAt(
+      project, editor, item, clip.timelineStartSec,
+      SCRATCH_VIDEO_TRACK, 0,
+      `place spine audio ${clip.fileName} at ${clip.timelineStartSec}s`,
+    );
+  }
+  log(`Placed the audio spine: ${plan.clips.length} moment(s)`);
+
+  let withSourceAudio = 0;
+  for (const v of plan.videoLayer) {
+    const item = mediaByName.get(v.fileName);
+    setInOut(project, item, v.sourceInSec, v.sourceOutSec, `set in/out for ${v.fileName}`);
+    // A2 keeps a wanted sound effect under the narration; the scratch track
+    // swallows the rest, which is dialogue the spine already carries.
+    const audioTrack = v.useSourceAudio ? 1 : SCRATCH_AUDIO_TRACK;
+    if (v.useSourceAudio) withSourceAudio += 1;
+    overwriteAt(
+      project, editor, item, v.timelineStartSec,
+      0, audioTrack,
+      `place picture ${v.fileName} at ${v.timelineStartSec}s`,
+    );
+  }
+  log(
+    `Placed the picture layer: ${plan.videoLayer.length} shot(s)` +
+      (withSourceAudio > 0 ? `, ${withSourceAudio} keeping their own sound` : ""),
+  );
+
+  try {
+    await clearScratchTracks(project, log);
+  } catch (err) {
+    log(`Warning: could not clear the scratch tracks (${err.message}). Delete V${SCRATCH_VIDEO_TRACK + 1} and A${SCRATCH_AUDIO_TRACK + 1}+ by hand.`);
+  }
+}
+
 async function buildSequence(projectId, log) {
   const plan = await fetchPlan(projectId);
-  log(`Plan: ${plan.clips.length} clips, ${plan.durationSec}s, ${plan.fps}fps`);
+  const layerNote = plan.videoLayer?.length
+    ? `, picture layer of ${plan.videoLayer.length} shot(s)`
+    : "";
+  log(`Plan: ${plan.clips.length} clips, ${plan.durationSec}s, ${plan.fps}fps${layerNote}`);
 
   const project = await ppro.Project.getActiveProject();
   if (!project) throw new Error("No project open in Premiere.");
@@ -330,9 +389,20 @@ async function buildSequence(projectId, log) {
   await project.openSequence(created);
   const sequence = (await project.getActiveSequence()) ?? created;
 
-  await placeClips(project, sequence, plan, mediaByName, log);
+  const hasVideoLayer = Array.isArray(plan.videoLayer) && plan.videoLayer.length > 0;
+  if (hasVideoLayer) {
+    await placeTwoLayers(project, sequence, plan, mediaByName, log);
+  } else {
+    // No video-layout stage has run for this project, so each moment keeps
+    // its own picture — exactly what every build did before two timelines.
+    await placeClips(project, sequence, plan, mediaByName, log);
+  }
 
-  return { sequenceName, clips: plan.clips.length };
+  return {
+    sequenceName,
+    clips: plan.clips.length,
+    videoClips: hasVideoLayer ? plan.videoLayer.length : 0,
+  };
 }
 
 module.exports = { buildSequence, fetchProjects, fetchPlan, APP_ORIGIN };
