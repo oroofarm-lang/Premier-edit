@@ -11,6 +11,12 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-08-01 — Panel reordered so the build flow never needs scrolling; content-selection checkpoint approved
+
+- **Root-caused why the scroll fix "didn't work"**: it likely did fix the CSS mechanics, but the real problem was that the panel put two newer features (Active cut / profile switching, Refine this cut — sizeable blocks with a moment list, chip row, textarea, and turn history) between the project picker and the actual Load plan/Build sequence actions. Reaching the core build flow meant scrolling past all of that regardless of whether scroll itself worked. **Fixed at the layout level, not just the CSS level**: moved `plan-block` + the actions row right after the picker, moved `cut-block`/`refine-block` below them, and made "Refine this cut" a collapsed `<details>` by default (auto-expanding only when a conversation or draft is already in progress). Commit `d5704c0` on `stage2-panel`. This means the primary action no longer depends on scroll behavior being correct at all — belt and suspenders on top of the `100vh` fix from the entry below.
+- **Verified "Approve selection" works correctly on localhost** (one of the untested interactive controls from the audit below): clicked it directly via the browser tooling, confirmed no console errors, and confirmed in SQLite that `CONTENT_SELECTION` flipped to `approved=1` with a real timestamp, with the UI correctly swapping the button for a "Selection approved" badge — same pattern as the other two checkpoints.
+- **All three approval checkpoints (Ingest, Transcription, Content selection) are now approved on חליטת תה - סט מוקטן** — a genuine, real project milestone, not just a test artifact; left in place rather than reverted since it's the correct, desired state for this project's actual workflow.
+
 ## 2026-08-01 — Hardened the panel scroll fix, closed the beat-plan parity gap, audited localhost
 
 - **User reported the scroll fix didn't actually work** after reloading, plus a general feeling that the panel doesn't match localhost, plus vague "visibility and functionality" issues on localhost itself. Went over all three rather than guessing at one.
