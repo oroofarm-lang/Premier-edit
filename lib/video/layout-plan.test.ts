@@ -3,6 +3,7 @@ import {
   buildLayoutPrompt,
   layOutSpine,
   parseLayoutPlan,
+  targetPlacementCount,
   validateLayout,
 } from "./layout-plan";
 import type { LayoutPlacement, ShotCandidate } from "./layout-plan";
@@ -117,21 +118,34 @@ describe("validateLayout", () => {
     if (!result.ok) expect(result.reason).toContain("used more than once");
   });
 
-  it("rejects two shots from the same file back to back", () => {
+  it("rejects two adjacent spans of the same take back to back", () => {
     // Caught on the first real layout run: 0X7A1682 appeared at placements 3
     // and 4. Different shots, so the same-shot check passed, but the
-    // execution layer only produces hard cuts and it reads as a jump cut.
-    const sameFile = [
-      shot({ endSec: 3, fileName: "A.MP4" }),
-      shot({ startSec: 7, endSec: 10, fileName: "A.MP4" }),
+    // execution layer only produces hard cuts and it reads as a jump.
+    const adjacent = [
+      shot({ startSec: 0, endSec: 3, fileName: "A.MP4" }),
+      shot({ startSec: 3.2, endSec: 6.2, fileName: "A.MP4" }),
     ];
     const result = validateLayout(
       { placements: [place(0, 0, 3), place(1, 3, 6)] },
-      sameFile,
+      adjacent,
       6,
     );
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain("jump cut");
+  });
+
+  it("allows the same file back to back when the spans are a real angle apart", () => {
+    // The user explicitly wants a subject revisited from several angles, and
+    // in one continuous take those angles are distant moments of one file.
+    // Banning the file outright fought that; source distance distinguishes.
+    const differentAngles = [
+      shot({ startSec: 0, endSec: 3, fileName: "A.MP4" }),
+      shot({ startSec: 12, endSec: 15, fileName: "A.MP4" }),
+    ];
+    expect(
+      validateLayout({ placements: [place(0, 0, 3), place(1, 3, 6)] }, differentAngles, 6),
+    ).toEqual({ ok: true });
   });
 
   it("allows the same file again once another source separates them", () => {
@@ -194,6 +208,23 @@ describe("parseLayoutPlan", () => {
 
   it("throws when placements is missing", () => {
     expect(() => parseLayoutPlan('{"foo":1}')).toThrow(/placements/);
+  });
+});
+
+describe("targetPlacementCount", () => {
+  it("asks for more picture cuts than the audio has moments", () => {
+    // The first real layout returned 12 placements over 34.8s, roughly one
+    // per spoken moment. The user wanted markedly more.
+    const count = targetPlacementCount(34.8, "SOCIAL_POST");
+    expect(count.ideal).toBeGreaterThan(12);
+    expect(count.min).toBeLessThan(count.ideal);
+    expect(count.max).toBeGreaterThan(count.ideal);
+  });
+
+  it("still paces long-form less frantically than a reel", () => {
+    expect(targetPlacementCount(60, "YOUTUBE_LONG").ideal).toBeLessThan(
+      targetPlacementCount(60, "REEL_SHORT").ideal,
+    );
   });
 });
 

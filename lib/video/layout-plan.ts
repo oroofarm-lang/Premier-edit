@@ -1,5 +1,6 @@
 import type { OutputProfile } from "@/lib/generated/prisma/enums";
 import { assembleExpertSections } from "@/lib/experts";
+import { SHOT_DURATION_SEC } from "@/lib/experts/pacing";
 
 /**
  * Pure logic for the video layer: prompt assembly, response parsing, and
@@ -53,6 +54,47 @@ export type LayoutPlan = {
 /** Floating-point slack when comparing timeline positions, in seconds. */
 const EPSILON = 0.05;
 
+/**
+ * How far apart in the source clip two consecutive spans must sit before
+ * they count as different angles rather than a jump cut.
+ *
+ * The first version of this rule banned consecutive placements from one file
+ * outright, which was too blunt: the user explicitly wants the same subject
+ * revisited from several angles ("show the field a few times, from all sorts
+ * of angles"), and in a single continuous take those angles are different
+ * moments of one file. Source-time distance is a proxy for "the camera has
+ * moved since", not proof of it — but it distinguishes the case the rule was
+ * written for (two adjacent spans of the same shot, which really does read as
+ * a jump) from the case the user is asking for.
+ */
+const SAME_FILE_ANGLE_GAP_SEC = 2;
+
+/**
+ * How much denser the picture cuts than the spoken moments.
+ *
+ * The video layer is not paced by the audio. A single sentence can carry
+ * three shots — the subject, a detail, a reaction — and the user asked for
+ * exactly that: "show the field a few times, from all sorts of angles",
+ * "jump between moments". The first real layout returned 12 placements over
+ * 34.8s, roughly one per spoken moment, which is the cadence this factor
+ * exists to break. It also anticipates cutting to music later, which needs
+ * more cut points available, not fewer.
+ */
+const VIDEO_DENSITY_FACTOR = 0.65;
+
+/** Suggested number of picture cuts for a cut of this length and profile. */
+export function targetPlacementCount(
+  totalDurationSec: number,
+  profile: OutputProfile,
+): { min: number; ideal: number; max: number } {
+  const ideal = SHOT_DURATION_SEC[profile].ideal * VIDEO_DENSITY_FACTOR;
+  return {
+    min: Math.max(3, Math.round(totalDurationSec / (ideal * 1.6))),
+    ideal: Math.max(4, Math.round(totalDurationSec / ideal)),
+    max: Math.max(6, Math.round(totalDurationSec / (ideal * 0.55))),
+  };
+}
+
 export function buildLayoutPrompt(
   spine: SpineMoment[],
   candidates: ShotCandidate[],
@@ -85,6 +127,8 @@ export function buildLayoutPrompt(
     })
     .join("\n");
 
+  const count = targetPlacementCount(totalSec, outputProfile);
+
   return `אתה עורך וידאו. **פס האודיו כבר בנוי וסגור** — הסיפור המדובר נקבע,
 ואתה לא משנה בו כלום. התפקיד שלך הוא **להלביש עליו תמונה**.
 
@@ -111,22 +155,30 @@ ${assembleExpertSections({
    בלי חורים ובלי חפיפות. השמה מתחילה בדיוק איפה שהקודמת נגמרת.
 2. **אורך**: השמה לא יכולה להיות ארוכה מהשוט שממנו היא לקוחה. שוט של 2.6
    שניות לא יכול לכסות 5 שניות. אפשר להשתמש בחלק משוט.
-3. **החלפה לפי משמעות, לא לפי קצב קבוע**: תחליף שוט כשהתוכן מתקדם או כשהשוט
-   מיצה את עצמו — לא כל X שניות.
+3. **צפיפות**: כוון ל-**${count.ideal} השמות בערך** (לא פחות מ-${count.min},
+   לא יותר מ-${count.max}). שכבת הוידאו מתחלפת **הרבה יותר מהר מהאודיו** —
+   משפט אחד יכול לשאת שלושה שוטים: הנושא, פרט, תגובה. עדיין לפי משמעות ולא
+   לפי שעון: תחליף כשהתוכן מתקדם או כשהשוט מיצה את עצמו.
+3א. **חזור לאותו נושא מזוויות שונות**: אם יש כמה שוטים של השדה, של הקנקן או
+   של הידיים — תשתמש בכמה מהם לאורך הקאט, לא רק באחד. זה מה שגורם לעריכה
+   להרגיש עשירה במקום סטטית. מותר לחזור לאותו קובץ בהמשך, בתנאי שזה קטע
+   אחר ומרוחק בזמן המקור.
 4. **סנכרון רק כשהשוט טוב**: אם רגע מסומן "סנכרון אפשרי" ואיכות השוט גבוהה,
    אפשר להשאיר את הדובר על המסך. אם השוט חלש — תכסה אותו במשהו אחר.
    ההחלטה היא לכל רגע בנפרד, לא כלל גורף.
 5. **בלי חזרות**: אל תשתמש באותו שוט פעמיים. תפזר בין מקורות.
 6. **העדף תנועה שלמה ופעילות**: שוט שבו קורה משהו והתנועה בו מסתיימת עדיף
    על שוט יפה שבו לא קורה כלום.
-7. **"useSourceAudio"**: ברירת המחדל false. תסמן true רק אם בשוט יש סאונד
+7. **נימוק קצר**: "reason" עד 6 מילים. אתה מייצר הרבה השמות, ונימוק ארוך
+   לכל אחת מבזבז את תקציב התשובה.
+8. **"useSourceAudio"**: ברירת המחדל false. תסמן true רק אם בשוט יש סאונד
    אפקט שכדאי לשמוע (חיתוך, מזיגה, טפטוף) — אף פעם לא בשביל דיבור, כי
    הדיבור כבר בנוי בפס האודיו.
 
 החזר אך ורק JSON תקין, בלי טקסט לפני או אחרי:
 {
   "placements": [
-    { "index": 3, "timelineStartSec": 0.0, "timelineEndSec": 2.4, "useSourceAudio": false, "reason": "עד 10 מילים" }
+    { "index": 3, "timelineStartSec": 0.0, "timelineEndSec": 2.4, "useSourceAudio": false, "reason": "עד 6 מילים" }
   ]
 }`;
 }
@@ -206,16 +258,23 @@ export function validateLayout(
     }
 
     if (i > 0) {
-      // Two different shots from the same source file, back to back, read as
-      // a jump cut — the execution layer produces hard cuts only, so nothing
-      // downstream softens it. The same-shot check above does not catch this,
-      // and the first real layout run did exactly this with 0X7A1682.
+      // Two adjacent spans of the same take, back to back, read as a jump
+      // cut — the execution layer produces hard cuts only, so nothing
+      // downstream softens it. Spans far apart in the same file are a
+      // different matter: that is the same subject from another angle, which
+      // is wanted.
       const previousShot = candidates[ordered[i - 1].index];
       if (previousShot && previousShot.fileName === shot.fileName) {
-        return {
-          ok: false,
-          reason: `Placements ${i} and ${i + 1} both come from ${shot.fileName} back to back — that reads as a jump cut. Put a different source between them.`,
-        };
+        const gap = Math.min(
+          Math.abs(shot.startSec - previousShot.endSec),
+          Math.abs(previousShot.startSec - shot.endSec),
+        );
+        if (gap < SAME_FILE_ANGLE_GAP_SEC) {
+          return {
+            ok: false,
+            reason: `Placements ${i} and ${i + 1} are adjacent spans of ${shot.fileName} (${gap.toFixed(1)}s apart in the source) — that reads as a jump cut rather than a new angle.`,
+          };
+        }
       }
 
       const previousEnd = ordered[i - 1].timelineEndSec;

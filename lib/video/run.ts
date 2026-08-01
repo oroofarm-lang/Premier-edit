@@ -11,7 +11,16 @@ import {
 } from "./layout-plan";
 
 const MODEL = "claude-sonnet-5";
-const MAX_RESPONSE_TOKENS = 16000;
+/**
+ * Covers the model's reasoning plus the JSON. Raised from 16000 after the
+ * density target pushed a real run past the limit mid-JSON: roughly twenty
+ * placements, each with a Hebrew justification, on top of deliberating about
+ * angles and coverage. Unlike the documented failure in llm-selector.ts —
+ * where a contradicted instruction burned the whole budget on thinking and
+ * the fix was removing the contradiction — here the output genuinely is
+ * larger, so the budget is the right thing to change.
+ */
+const MAX_RESPONSE_TOKENS = 32000;
 
 /**
  * How many shots get a vision description, best first.
@@ -209,11 +218,17 @@ export async function runVideoLayout(
     const basePrompt = buildLayoutPrompt(spine, candidates, project.outputProfile);
 
     async function requestLayout(prompt: string) {
-      const message = await client.messages.create({
-        model: MODEL,
-        max_tokens: MAX_RESPONSE_TOKENS,
-        messages: [{ role: "user", content: prompt }],
-      });
+      // Streamed rather than a plain create(): at this token budget the SDK
+      // refuses a non-streaming request outright, because it may run past
+      // ten minutes. finalMessage() reassembles the whole response, so
+      // nothing downstream has to care that it arrived in pieces.
+      const message = await client.messages
+        .stream({
+          model: MODEL,
+          max_tokens: MAX_RESPONSE_TOKENS,
+          messages: [{ role: "user", content: prompt }],
+        })
+        .finalMessage();
       const block = message.content.find((b) => b.type === "text");
       if (!block || block.type !== "text") {
         throw new Error(

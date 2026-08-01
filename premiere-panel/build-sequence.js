@@ -135,20 +135,27 @@ function overwriteAt(project, editor, clipItem, atSec, videoTrack, audioTrack, l
 
 /** Empties the scratch tracks left behind by B-roll placements. Ripple is
  * false throughout — removing these must not shift anything already placed. */
-async function clearScratchTracks(project, log) {
+/**
+ * Removes every clip from the given tracks. Shared by scratch-track cleanup
+ * and by the sweep that empties a freshly created sequence, because the two
+ * need identical, fiddly handling of Premiere's object lifetimes.
+ */
+async function clearTrackItems(project, trackSpecs, label) {
   // Re-fetch rather than reusing the handles from placement: after a run of
   // transactions the earlier sequence/editor objects go stale and every call
   // on them fails with "The script object is no longer valid."
   const sequence = await project.getActiveSequence();
-  if (!sequence) return;
+  if (!sequence) return 0;
   const editor = ppro.SequenceEditor.getEditor(sequence);
 
-  const passes = [
-    { track: await sequence.getVideoTrack(SCRATCH_VIDEO_TRACK), mediaType: ppro.Constants.MediaType.VIDEO },
-    // Both channels: a stereo source on mono tracks occupies this one and the next.
-    { track: await sequence.getAudioTrack(SCRATCH_AUDIO_TRACK), mediaType: ppro.Constants.MediaType.AUDIO },
-    { track: await sequence.getAudioTrack(SCRATCH_AUDIO_TRACK + 1), mediaType: ppro.Constants.MediaType.AUDIO },
-  ];
+  const passes = [];
+  for (const spec of trackSpecs) {
+    const track =
+      spec.mediaType === ppro.Constants.MediaType.VIDEO
+        ? await sequence.getVideoTrack(spec.index)
+        : await sequence.getAudioTrack(spec.index);
+    passes.push({ track, mediaType: spec.mediaType });
+  }
 
   let cleared = 0;
   for (const { track, mediaType } of passes) {
@@ -166,12 +173,26 @@ async function clearScratchTracks(project, log) {
           compoundAction.addAction(
             editor.createRemoveItemsAction(selection, false, mediaType, false),
           );
-        }, "clear scratch track");
+        }, label);
       });
     });
     cleared += items.length;
   }
 
+  return cleared;
+}
+
+async function clearScratchTracks(project, log) {
+  const cleared = await clearTrackItems(
+    project,
+    [
+      { index: SCRATCH_VIDEO_TRACK, mediaType: ppro.Constants.MediaType.VIDEO },
+      // Both channels: a stereo source on mono tracks occupies this one and the next.
+      { index: SCRATCH_AUDIO_TRACK, mediaType: ppro.Constants.MediaType.AUDIO },
+      { index: SCRATCH_AUDIO_TRACK + 1, mediaType: ppro.Constants.MediaType.AUDIO },
+    ],
+    "clear scratch track",
+  );
   if (cleared > 0) log(`Cleared ${cleared} leftover item(s) from the scratch tracks`);
 }
 
@@ -233,6 +254,58 @@ async function placeClips(project, sequence, plan, mediaByName, log) {
   }
 }
 
+/**
+ * Creates the sequence with settings taken from the footage itself, rather
+ * than from whatever preset Premiere happens to default to.
+ *
+ * This matters more than it sounds: the default preset is landscape, so
+ * vertical social footage was landing in a horizontal sequence with pillar
+ * bars — the picture was correct and the frame was wrong. `createSequence`
+ * takes no dimensions at all, so there was nothing to fix at the call site;
+ * `createSequenceFromMedia` derives frame size, frame rate and pixel aspect
+ * from a real clip.
+ *
+ * Two caveats handled here. The API wants ClipProjectItem, not the raw
+ * ProjectItem that getItems() returns — the opposite of
+ * createOverwriteItemAction, which rejects the cast (see CLAUDE.md). And it
+ * seeds the new sequence with the media it was given, which would leave a
+ * stray clip under the real cut, so V1/A1 are swept before anything is
+ * placed. Falls back to the old behaviour rather than failing the build.
+ */
+async function createSequenceMatchingFootage(project, sequenceName, plan, mediaByName, log) {
+  const formatSource = plan.clips[0]?.fileName;
+  const item = formatSource ? mediaByName.get(formatSource) : null;
+
+  if (item) {
+    try {
+      const clipItem = ppro.ClipProjectItem.cast(item);
+      const created = await project.createSequenceFromMedia(sequenceName, [clipItem]);
+      if (created) {
+        log(`Created sequence "${sequenceName}" matched to ${formatSource}`);
+        await project.openSequence(created);
+        const seeded = await clearTrackItems(
+          project,
+          [
+            { index: 0, mediaType: ppro.Constants.MediaType.VIDEO },
+            { index: 0, mediaType: ppro.Constants.MediaType.AUDIO },
+            { index: 1, mediaType: ppro.Constants.MediaType.AUDIO },
+          ],
+          "clear seeded media",
+        );
+        if (seeded > 0) log(`Cleared ${seeded} seeded item(s) from the new sequence`);
+        return created;
+      }
+    } catch (err) {
+      log(`Could not match the sequence to ${formatSource} (${err.message}); using Premiere's default preset instead.`);
+    }
+  }
+
+  const created = await project.createSequence(sequenceName);
+  if (!created) throw new Error("createSequence returned nothing");
+  log(`Created sequence "${sequenceName}" with Premiere's default preset`);
+  return created;
+}
+
 async function buildSequence(projectId, log) {
   const plan = await fetchPlan(projectId);
   log(`Plan: ${plan.clips.length} clips, ${plan.durationSec}s, ${plan.fps}fps`);
@@ -243,9 +316,13 @@ async function buildSequence(projectId, log) {
   const mediaByName = await ensureMediaImported(project, plan, log);
 
   const sequenceName = `${plan.name} (Premier Edit)`;
-  const created = await project.createSequence(sequenceName);
-  if (!created) throw new Error("createSequence returned nothing");
-  log(`Created sequence "${sequenceName}"`);
+  const created = await createSequenceMatchingFootage(
+    project,
+    sequenceName,
+    plan,
+    mediaByName,
+    log,
+  );
 
   // The editor writes to the sequence Premiere currently has open — Adobe's own
   // samples all edit getActiveSequence(). Placing into a freshly created but
