@@ -11,6 +11,13 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-08-01 — The picture layer gets a UI, and the harness that hid it gets fixed
+
+- **The user could not find the 20 placements anywhere — and was right.** They had no UI at all; the only way to see them was to build a sequence and inspect V1. Commit `3f22978` gives the cut-review screen a **Picture layer** section, listed separately from the moment list rather than folded into it: the two are different timelines with different counts and boundaries, and showing them together would imply a one-to-one relationship that deliberately does not exist. Each entry shows timeline position, length, source file and source in-point, with 🔊 on shots keeping their own sound. A "Generate picture layer" button triggers the stage.
+- **The harness had silently rotted, and it cost a full verification cycle.** `_harness.html` *duplicated* the panel's markup instead of loading it, so it kept rendering the panel as it looked the day it was written — the new block was simply absent, and the first check reported it missing from the DOM as though the feature were broken. It is now **generated from `index.html`** with only the UXP stubs injected, so it cannot drift again. Lesson worth keeping: a test double that copies the thing it stands in for will eventually lie about it.
+- **Two things about verifying the panel outside Premiere**, both now settled: the `file://` route renders static snapshots and cannot execute the panel's JS, so `npm run panel:preview` copies the harness under `public/` and the dev server runs it for real. `sp-button` renders as plain text there — a Spectrum component that only exists inside the host — which looks broken and is not.
+- Verified in a browser against the real markup: block renders, count line reads "4 shots · 32.6s · 1 with sound", entries show position and source, moment list unaffected.
+
 ## 2026-08-01 — Phase 4: the picture layer reaches the timeline
 
 - **Until this commit the video layer existed only in the database.** A build produced the improved audio spine with each moment's own picture; the 20 placements the layout stage chose were invisible in Premiere. Commit `8d51159` closes that.
