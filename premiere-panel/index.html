@@ -21,39 +21,10 @@
       </sp-picker>
     </div>
 
-    <div id="cut-block" class="block" hidden>
-      <sp-detail>Active cut</sp-detail>
-      <div id="profile-chips" class="chip-row"></div>
-      <sp-body id="cut-premise" class="muted" dir="auto"></sp-body>
-      <sp-body id="cut-beatplan" class="muted" dir="auto"></sp-body>
-      <ul id="cut-list"></ul>
-    </div>
-
-    <div id="refine-block" class="block" hidden>
-      <sp-detail>Refine this cut</sp-detail>
-      <div id="refine-chips" class="chip-row"></div>
-      <textarea
-        id="refine-input"
-        dir="auto"
-        rows="2"
-        placeholder="מה לשנות בקאט?"
-      ></textarea>
-      <div class="actions">
-        <sp-button id="refine-send-button" variant="secondary">Send</sp-button>
-      </div>
-      <ul id="refine-turns"></ul>
-
-      <div id="draft-block" hidden>
-        <sp-detail>Proposed version</sp-detail>
-        <sp-body id="draft-summary"></sp-body>
-        <ul id="draft-diff"></ul>
-        <div class="actions">
-          <sp-button id="draft-apply-button" variant="accent">Apply</sp-button>
-          <sp-button id="draft-discard-button" variant="secondary">Discard</sp-button>
-        </div>
-      </div>
-    </div>
-
+    <!-- The core flow (pick a project, load its plan, build it into Premiere)
+         stays right after the picker, before any of the secondary
+         profile-switching/refinement content below — so reaching Build
+         sequence never depends on scrolling past everything else first. -->
     <div id="plan-block" class="block" hidden>
       <sp-detail>Approved cut plan</sp-detail>
       <sp-body id="plan-summary"></sp-body>
@@ -65,6 +36,44 @@
       <sp-button id="build-button" variant="accent" disabled>
         Build sequence
       </sp-button>
+    </div>
+
+    <div id="cut-block" class="block" hidden>
+      <sp-detail>Active cut</sp-detail>
+      <div id="profile-chips" class="chip-row"></div>
+      <sp-body id="cut-premise" class="muted" dir="auto"></sp-body>
+      <sp-body id="cut-beatplan" class="muted" dir="auto"></sp-body>
+      <ul id="cut-list"></ul>
+    </div>
+
+    <!-- Collapsed by default: this is the biggest single block (chips +
+         textarea + turn history + draft review) and the least essential to
+         the core "cut raw footage into the timeline" flow above. -->
+    <div id="refine-block" class="block" hidden>
+      <details id="refine-details">
+        <summary><sp-detail>Refine this cut</sp-detail></summary>
+        <div id="refine-chips" class="chip-row"></div>
+        <textarea
+          id="refine-input"
+          dir="auto"
+          rows="2"
+          placeholder="מה לשנות בקאט?"
+        ></textarea>
+        <div class="actions">
+          <sp-button id="refine-send-button" variant="secondary">Send</sp-button>
+        </div>
+        <ul id="refine-turns"></ul>
+
+        <div id="draft-block" hidden>
+          <sp-detail>Proposed version</sp-detail>
+          <sp-body id="draft-summary"></sp-body>
+          <ul id="draft-diff"></ul>
+          <div class="actions">
+            <sp-button id="draft-apply-button" variant="accent">Apply</sp-button>
+            <sp-button id="draft-discard-button" variant="secondary">Discard</sp-button>
+          </div>
+        </div>
+      </details>
     </div>
 
     <dialog id="confirm-dialog">

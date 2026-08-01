@@ -283,6 +283,13 @@ async function loadState(projectId) {
     renderRefineChips(state.selections.length);
     renderTurns(state.refinementDraft ? state.refinementDraft.turns : []);
     renderDraft(state.refinementDraft);
+    // Collapsed by default (see index.html) so it never pushes Build sequence
+    // out of view, but auto-expand when there's an actual conversation or a
+    // pending draft already sitting there — those shouldn't be hidden.
+    const hasActivity = Boolean(
+      state.refinementDraft && (state.refinementDraft.turns.length > 0 || state.refinementDraft.selections.length > 0),
+    );
+    if (hasActivity) document.getElementById("refine-details").open = true;
   } catch (err) {
     log(`Could not load cut state: ${err.message}`);
     showBlock("cut-block", false);

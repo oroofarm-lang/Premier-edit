@@ -44,6 +44,18 @@ body {
   margin-top: 14px;
 }
 
+#refine-details > summary {
+  cursor: pointer;
+}
+
+#refine-details > summary sp-detail {
+  display: inline;
+}
+
+#refine-details[open] > summary {
+  margin-bottom: 8px;
+}
+
 /* Each of these can grow past the docked panel's height on its own (a real
    cut easily has 7-13 moments, plus a turn per refinement instruction, plus
    a diff line per moment) — bounding each list to its own scroll region
