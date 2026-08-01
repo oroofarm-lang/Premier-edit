@@ -70,7 +70,7 @@ See [[Decisions and Open Questions]] for why FCP7 XML was chosen over OTIO for t
 
 ## Stage 2 UXP panel (`premiere-panel/`)
 
-Reads an approved cut over HTTP from the local app (port 3002) and builds it directly into a new Premiere sequence via the real `premierepro` UXP API — no XML round-trip. Four real defects only showed up testing against actual Premiere, not from reading the API types:
+Reads an approved cut over HTTP from the local app (port 3002) and builds it directly into a new Premiere sequence via the real `premierepro` UXP API — no XML round-trip. As of 2026-08-01 the panel has full feature parity with the web app (profile switching, conversational refinement, beat-structure display, the "considered but not chosen" shortlist, and triggering a fresh multi-profile generation) — see [[Decisions and Open Questions]] for how that closed in stages. Several real defects only showed up testing against actual Premiere, not from reading the API types:
 
 > [!bug] `createOverwriteItemAction` wants a raw `ProjectItem`, not the `ClipProjectItem` cast
 > The cast is needed to set in/out points, but passing the cast object to the overwrite action itself fails with "Invalid parameter." Matches Adobe's own sample code, not the more "consistent-looking" API guess.
@@ -83,3 +83,9 @@ Reads an approved cut over HTTP from the local app (port 3002) and builds it dir
 
 > [!bug] `TrackItemSelection` is only valid inside its own callback
 > Holding a reference to use after `createEmptySelection`'s callback returns fails with "The script object is no longer valid." Build the selection and remove the items in the same callback.
+
+> [!bug] UXP's panel webview has no ambient document scroll
+> A normal browser tab makes any page taller than the viewport scrollable automatically. UXP's docked panel does not — content past the panel's rendered height is silently **clipped with no scrollbar at all**. First hit when the panel accumulated enough content (profile chips + moment list + refine block + plan list) to exceed a typical docked size, hiding the Build sequence button entirely. Two independent fixes, both worth keeping: `html`/`body` sized with `height: 100vh` (not a `height: 100%` chain — that only works if every ancestor also reports a real, non-auto height, which can't be confirmed from outside Premiere's own host chrome) plus `overflow-y: auto`; and, more robust because it doesn't depend on scroll mechanics working at all, **keeping the primary action reachable by layout order** — `premiere-panel/index.html` puts the project picker → Load plan → Build sequence sequence immediately together, with newer secondary features (profile switching, refinement) below and collapsed by default.
+
+> [!bug] The UXP Developer Tool's file picker can't see `.worktrees/`
+> `premiere-panel/` only exists inside `.worktrees/stage2-panel/` (see [[Decisions and Open Questions]] on the main/stage2-panel split) — a dot-prefixed folder, hidden by default in Finder and in native macOS Open dialogs. Browsing from the repo root in "Add Plugin" simply won't show it. Use `Cmd+Shift+G` in the file picker and paste the full path instead.
