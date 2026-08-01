@@ -55,7 +55,25 @@ Part of [[Premier Edit]]. Living log — update as questions get resolved instea
 > [!success] Premiere expert scoped to guarding the boundary, not extending it (2026-08-01)
 > The request was for an expert that "knows how to cut, do fades, effects and colour." Fades, effects, and colour are outside the MVP automation boundary, and two of them have no UXP API at all. Rather than silently dropping the request or silently expanding scope, `premiere-craft` was built to hold the opposite job: it tells the *selector* that every join is a hard cut with no dissolve and no audio fade, so moments are chosen to work dry. Colour and effects remain the editor's own work, as stated.
 
+> [!success] Editing model → two timelines, built separately (2026-08-01)
+> The user described how they actually edit and it was not what the system did: build the **audio** story first from the spoken word, then lay **video** over it chosen on its own merits, where the picture need not come from the moment the sound came from. The old model picked *moments* where sound and picture travelled together, with `Selection.videoOverride` as a documented exception — so the picture was always chosen in service of the audio and always compromised. Inverted: `VideoPlacement` is now the norm and the override the legacy path. This also answered the standing question about the B-roll override never firing on its own — it was an exception to a rule that should not have been the rule. See [[Tech Stack#Two timelines]].
+
+> [!success] Shot quality → measured, not modelled (2026-08-01)
+> Asked what makes one of twenty shots of the same table worth using, the user chose **complete camera movement** and **stability**, and explicitly did *not* choose composition, light, or "a real human moment". Both chosen signals are measurable in ffmpeg, so the primary quality judgment for video costs nothing and vision runs only on what survives it. The single most consequential answer of the day.
+
+> [!success] Every stage has a free path (2026-08-01)
+> The Anthropic balance ran out mid-session and the video stage stopped dead, which exposed an architectural gap rather than bad luck: selection had always had a heuristic beside the LLM so the pipeline runs end to end without an account, and the video layer had none. Now it does. The rule going forward: **a stage that only works with an API key is an incomplete stage.**
+
+> [!success] Sequence format → derived from the footage (2026-08-01)
+> `createSequence(name)` takes no dimensions at all, so Premiere used its default landscape preset and vertical social footage landed in a horizontal sequence. Now built with `createSequenceFromMedia()` from the plan's first clip. Worth noting the bug was narrower than it looked: `buildCutTimeline` already reported 1080x1920 because ingest's rotation handling was correct from the start, so the FCP7 export path was **always** vertical.
+
 ## Still open
+
+- **Does the video layer read well to a human?** It is gapless, varied, well-shot and passes every mechanical check, but "the cuts are not smooth or pretty yet" was the user's own verdict and they deliberately parked it. Unmeasured.
+
+- **Offering a sequence preset instead of always deriving one.** Raised by the user; not built. Deriving from the footage is right by default, but a user targeting a different delivery format has no way to say so.
+
+- **Cutting to music beats.** Raised by the user as a near-term want. The density work anticipates it — more cut points available is a precondition — but nothing reads audio for beats yet.
 
 - **Does the expert layer actually improve the cut?** The two defects it fixed are real and mechanical (see [[Tech Stack#Expert layer]]) — wrong length guidance for two of three profiles, and a pre-filter that down-ranked the very short moments the hook validator requires. But "the cuts pick wrong moments and the order doesn't build a story" was a subjective report, and the fix has **not** been re-measured against real footage yet. Needs a fresh selection run on a real project, compared against the previous cut for the same project.
 

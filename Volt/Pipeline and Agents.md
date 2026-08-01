@@ -16,16 +16,21 @@ Part of [[Premier Edit]].
 ```mermaid
 graph LR
     A[ingest] --> B[transcription]
-    B --> C[content selection]
-    C --> D[rough cut]
-    D --> E[audio sync]
-    E --> F[captions]
-    F --> G[assembly]
-    G --> H[QC]
-    H --> I[export timeline - FCP7 XML]
-    I --> J[manual import to Premiere]
-    J --> K[manual polish: color, mix, finish]
+    B --> C[audio spine<br/>story from words]
+    A --> S[shot catalogue<br/>ffmpeg, free]
+    C --> V[video layout<br/>picture over spine]
+    S --> V
+    V --> D[rough cut]
+    D --> Q[QC]
+    Q --> P[build into Premiere<br/>UXP panel]
+    Q --> X[FCP7 XML<br/>fallback path]
+    P --> M[manual polish: colour, mix, captions]
+    X --> M
 ```
+
+> [!important] The pipeline forks, and that is the point
+> Since 2026-08-01 the middle of the pipeline is **two independent timelines**, not one. The **audio spine** decides what is said and in what order, from the transcript alone. The **shot catalogue** indexes every usable span of footage on its own merits, with no reference to speech. The **video layout** then dresses the spine with picture. See [[Decisions and Open Questions]] for why, and [[Tech Stack#Two timelines]] for how.
+
 
 Color and final finish are explicitly outside the automation boundary — see [[Premier Edit#Automation boundary]].
 

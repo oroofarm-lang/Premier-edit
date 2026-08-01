@@ -17,7 +17,8 @@ Part of [[Premier Edit]].
 | Data | Prisma 6.19.3 + SQLite | pinned — `prisma@latest` is now a v7 with a different config paradigm |
 | Local media layer | ffmpeg / ffprobe (npm static binaries) | see gotchas below |
 | Transcription | faster-whisper `large-v3` in a local Python venv | behind a `Transcriber` interface |
-| Visual understanding + smart selection | Anthropic API (`@anthropic-ai/sdk`), `claude-haiku-4-5` (vision) + `claude-sonnet-5` (selection) | needs `ANTHROPIC_API_KEY` in `.env` |
+| Shot analysis | ffmpeg filters (`scdet`, `blurdetect`, `signalstats`, `tblend`) | **free** — no key, no model; see Two timelines |
+| Visual understanding + editorial judgement | Anthropic API (`@anthropic-ai/sdk`), `claude-haiku-4-5` (vision) + `claude-sonnet-5` (selection, video layout) | `ANTHROPIC_API_KEY` in `.env`. **Optional** — every stage has a heuristic fallback and the pipeline runs end to end without it |
 | Premiere bridge | UXP panel (`premiere-panel/`, Stage 2) + FCP7 XML export (Stage 1, fallback) | Both implemented; panel is the primary path — see below |
 
 > [!bug] shadcn/ui version trap
@@ -67,6 +68,39 @@ The `LlmContentSelector` (`claude-sonnet-5`) pre-filters candidates with the exi
 Note the file split: pure logic (prompt assembly, draft reconstruction, diffing) lives in `refine-plan.ts` with no Prisma or SDK import; `refine.ts` holds the I/O. This isn't stylistic — vitest doesn't load `.env`, so a module that imports `prisma` at the top can't be unit-tested at all. Every tested module in `lib/` already follows this shape.
 
 See [[Decisions and Open Questions]] for why FCP7 XML was chosen over OTIO for the timeline format, and for the open question on whether the B-roll override ever fires on its own.
+
+## Two timelines
+
+The middle of the pipeline is two independent layers, decided separately and joined only at build time. Design: `docs/superpowers/specs/2026-08-01-two-timeline-audio-spine-design.md`.
+
+**Audio spine** (`lib/selection/`) — the story, chosen from the spoken word alone. The prompt tells the model outright that the picture is not its responsibility. Silent segments never reach it; vision no longer runs here at all.
+
+**Shot catalogue** (`lib/shots/`) — every usable span of footage, found and scored by ffmpeg with no model involved. Two boundary sources, because real footage has two problems: `scdet` splits a multi-shot file, and a sliding search inside continuous takes does the rest. That second half does the real work — a 55s clip from this project contains **zero** detected scene cuts.
+
+Four signals, each 0..1, weighted and renormalised over whichever were measured:
+
+| Signal | What it reads | Weight |
+|---|---|---|
+| `activity` | mean level of the motion curve — is anything happening | 0.30 |
+| `movementCompleteness` | does the span end settled, or was it cut mid-action | 0.24 |
+| `stability` | *jitter*, not level — so a smooth pan scores well and only shake is punished | 0.18 |
+| `sharpness` / `exposure` | guards against unusable footage | 0.14 / 0.06 |
+
+**Video layout** (`lib/video/`) — places catalogued shots over the spine. `layout-plan.ts` is pure (prompt, parsing, validation, spine positioning); `run.ts` holds the I/O. Validation is mechanical: full coverage from zero with no gap, no overlap, no placement longer than its source shot, no shot reused, no two adjacent spans of one take back to back.
+
+> [!tip] The cost control is the ordering, not the cap
+> The catalogue is free and can index hundreds of spans. Vision runs **only** on the best 40 by that free score, so a bad shot is rejected by arithmetic and never reaches a model. This is what makes ten minutes of wedding footage affordable.
+
+> [!bug] A locked-off shot of nothing used to score 1.00
+> The first catalogue scored only steadiness and settling, which both reward stillness — so an immaculate empty frame outranked the pour from pot to glass. The signal was already in the motion curve and simply unused: stability reads its *jitter*, `activity` reads its *level*. Activity now carries the largest weight, above stability, so a handheld shot of the pour beats a perfect shot of nothing.
+
+> [!bug] Frame differencing cannot separate camera motion from subject motion
+> This is a real limit, not an oversight. `activity` measures "how much is changing", which is not "what is happening" — it cannot tell the pour from someone walking past the lens. `vidstabdetect` measures true camera transform but ffmpeg 6 writes it as a binary `TRF1` file. Where the curve misjudges, the vision pass is the backstop.
+
+> [!bug] VideoPlacement's foreign key made the catalogue fail silently
+> A placement points at a `Shot`, so once a picture layer existed the catalogue could not replace those shots. The per-clip `catch` discarded the reason and counted it as a skip, so a re-run reported **1 clip analysed, 10 skipped, 0 shots written** with no explanation anywhere. The picture layer is now cleared before shots are replaced, and every skip carries its reason.
+
+**Free fallback.** `planLayoutHeuristically` lays out the picture layer with no model at all, using only the catalogue's free signals — the same pattern `HeuristicContentSelector` has always had beside the LLM selector. `runVideoLayout` auto-downgrades on a missing key. Verified: 21 placements over 34.8s, gapless, across 9 of 11 clips, in under a second. It cannot match content to words; that is exactly what the model call buys.
 
 ## Expert layer
 
