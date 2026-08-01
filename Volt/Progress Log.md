@@ -11,6 +11,16 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-08-01 — Phase 3: the video layer, and the first cut where picture and sound were chosen separately
+
+- **The point the whole architecture was built for now works.** `VideoPlacement` holds which shot plays over which stretch of the finished timeline, separate from `Selection` because the two layers have different counts and boundaries. Commit `25a3b28`.
+- **A `cinematography` expert carries the editorial rules**, and every one traces to something said while reviewing real output rather than to film theory: show what is described rather than who describes it; give an action the time it needs; sync is a per-moment decision; change by meaning, not cadence. The roster is now twelve.
+- **Vision moved here and is capped at the 40 best shots by the free deterministic score.** That ordering is the entire cost story: a bad shot is rejected by arithmetic and never reaches a model. It is what makes ten minutes of wedding footage affordable to analyse.
+- **Validation is mechanical, not trusting** — full coverage from zero with no gap (a gap is a black frame in the finished cut and nothing downstream would notice), no overlap, no placement longer than its source shot, no reuse, indexes that exist. Same philosophy as `validatePlan`.
+- **First real run**: 11 spine moments, 34.8s, 40 shots described, 12 placements, 173s. The result reads as an edit — opening pour, wide field, inspection, boiling kettle, **the pour as the climax**, a hand holding the glass to close. `useSourceAudio` came back true on exactly the three sound-effect moments (pour, steaming kettle, pour) and false everywhere speech plays, which is the rule working as designed and the thing the user asked for.
+- **That run exposed a gap the checks did not cover**: `0X7A1682` appeared at two consecutive placements. Different shots, so the same-shot rule passed — but the execution layer only makes hard cuts, and two spans of one file back to back read as a jump cut. Now rejected, with tests. Found by reading real output, not by re-reading the code.
+- **Two schema slips worth remembering**, both caught by `tsc` rather than at runtime: `activity` was added to the `ShotWindow` type but never to the `Shot` model, so the catalogue computed it and silently dropped it; and `Selection.reason` is nullable, which the spine positioner did not expect.
+
 ## 2026-08-01 — Phase 2: the audio spine, and the first measured cut-quality improvement
 
 - **Selection now decides one thing only: what is said, and in what order.** The prompt tells the model outright that the picture is not its responsibility, that a separate video layer will be dressed over its choices, and that it must not prefer a moment for looking good or reject one for looking bad. Commit `1d29870`.

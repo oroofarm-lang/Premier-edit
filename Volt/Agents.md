@@ -18,7 +18,7 @@ aliases:
 `npm run generate:agent-notes`. אל תערוך אותו ביד — ערוך את המומחה בקוד
 והרץ מחדש.
 
-11 מומחים, 19 קשרים.
+12 מומחים, 23 קשרים.
 
 ## לפי שלב
 
@@ -42,6 +42,10 @@ aliases:
 - [[food-and-product\|מומחה אוכל ומוצר]] — יודע אילו רגעים מוכרים מנה או מוצר — הרגע שבו זה נראה הכי טוב, ולא הרגע שבו מדברים עליו.
 - [[hebrew\|מומחה עברית]] — מכיר את מבנה העברית (תחיליות, RTL) ואת נקודות הכשל המוכחות של התמלול המקומי על החומר של הפרויקט הזה.
 - [[premiere-craft\|מומחה פרמיר]] — יודע מה שכבת הביצוע בפרמיר באמת יכולה לעשות ומה נשאר ידני — ושומר על גבול האוטומציה במקום להרחיב אותו.
+
+### חיתוך
+
+- [[cinematography\|מומחה שפה חזותית]] — מחליט איזה שוט מולבש על איזה רגע — מראה את מה שמתואר במקום את מי שמתאר, ושומר על פעולות שלמות.
 
 ### בקרת איכות
 
@@ -69,10 +73,14 @@ graph LR
   narrative-structure --- pacing
   hook --- pacing
   pacing --- qc
+  pacing --- cinematography
   framing --- food-and-product
   framing --- platform-reels
+  framing --- cinematography
   food-and-product --- hebrew
   hebrew --- qc
+  cinematography --- food-and-product
+  cinematography --- premiere-craft
   premiere-craft --- qc
   premiere-craft --- pacing
 ```

@@ -23,9 +23,9 @@ aliases:
 
 ## עובד מול
 
-[[hook]], [[narrative-structure]], [[qc]]
+[[hook]], [[narrative-structure]], [[qc]], [[cinematography]]
 
-נקרא על ידי: [[platform-reels]], [[platform-feed]], [[platform-youtube]], [[narrative-structure]], [[hook]], [[premiere-craft]], [[qc]]
+נקרא על ידי: [[platform-reels]], [[platform-feed]], [[platform-youtube]], [[narrative-structure]], [[hook]], [[cinematography]], [[premiere-craft]], [[qc]]
 
 ## קוד
 

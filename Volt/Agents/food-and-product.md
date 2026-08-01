@@ -25,7 +25,7 @@ aliases:
 
 [[framing]], [[platform-feed]], [[hebrew]]
 
-נקרא על ידי: [[platform-feed]], [[framing]], [[hebrew]]
+נקרא על ידי: [[platform-feed]], [[framing]], [[hebrew]], [[cinematography]]
 
 ## קוד
 

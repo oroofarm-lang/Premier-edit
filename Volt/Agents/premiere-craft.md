@@ -23,9 +23,9 @@ aliases:
 
 ## עובד מול
 
-[[qc]], [[pacing]]
+[[qc]], [[pacing]], [[cinematography]]
 
-נקרא על ידי: [[qc]]
+נקרא על ידי: [[cinematography]], [[qc]]
 
 ## קוד
 

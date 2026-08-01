@@ -21,9 +21,9 @@ aliases:
 
 ## עובד מול
 
-[[food-and-product]], [[platform-reels]]
+[[food-and-product]], [[platform-reels]], [[cinematography]]
 
-נקרא על ידי: [[food-and-product]]
+נקרא על ידי: [[food-and-product]], [[cinematography]]
 
 ## קוד
 
