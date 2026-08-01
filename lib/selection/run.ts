@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/db";
 import { HeuristicContentSelector } from "./heuristic";
 import { LlmContentSelector } from "./llm-selector";
-import { runVisionAnalysis } from "@/lib/vision/run";
 import { getAssetSegments } from "./segments";
 import {
   ALL_OUTPUT_PROFILES,
@@ -35,28 +34,30 @@ function resolveDefaultSelector(): ContentSelector {
 }
 
 /**
- * Runs vision analysis (best-effort) and builds the candidate list — the
- * part of the pipeline that's the same regardless of which output profile
- * ends up being selected for. Shared by a single-profile run and the
- * generate-all-profiles run, so the (slow) vision pass only happens once
- * either way.
+ * Builds the candidate list for the **audio spine** — the ordered story,
+ * decided from the spoken word alone.
+ *
+ * This deliberately no longer runs vision, and no longer carries visual
+ * fields on a candidate. The two-timeline design (see
+ * docs/superpowers/specs/2026-08-01-two-timeline-audio-spine-design.md)
+ * separates the two jobs the old single pass was doing badly at once:
+ * choosing *what is said* and choosing *what is seen*. Mixing them meant the
+ * picture was always chosen in service of the audio and always compromised.
+ *
+ * Two consequences worth stating, because both look like regressions and
+ * neither is:
+ *
+ * - **Silent segments are dropped here.** They have nothing to contribute to
+ *   a story built from words. They are not lost — they are exactly what the
+ *   shot catalogue (`lib/shots/`) already indexes for the video layer, judged
+ *   on their own merits rather than on whether anyone happened to be talking.
+ * - **Selection stops paying for a vision pass.** Vision moves to the video
+ *   layer, where it runs only on shots that survive the free deterministic
+ *   filter. Selection gets faster and cheaper as a side effect.
  */
 async function buildCandidates(
   projectId: string,
 ): Promise<{ project: Project; candidates: CandidateSegment[] }> {
-  // Visual analysis is an input to selection, not a separate approval step —
-  // the user approves the resulting picks, not "does this clip show tea
-  // being poured." Best-effort: a failed/missing vision pass still leaves
-  // transcript-based candidates usable.
-  if (process.env.ANTHROPIC_API_KEY) {
-    try {
-      await runVisionAnalysis(projectId);
-    } catch {
-      // Selection proceeds on transcript-only candidates for whatever
-      // couldn't be visually analyzed.
-    }
-  }
-
   const project = await prisma.project.findUniqueOrThrow({
     where: { id: projectId },
     include: {
@@ -67,23 +68,7 @@ async function buildCandidates(
   const candidates: CandidateSegment[] = [];
   for (const asset of project.mediaAssets) {
     for (const segment of getAssetSegments(asset)) {
-      // Exact-range match: vision analysis is keyed on the very same segment
-      // boundaries this function computes, so different moments in one long
-      // clip carry their own description instead of sharing a file-level one
-      // (see CLAUDE.md task #45).
-      const visual = asset.visualAnalyses.find(
-        (v) => v.startSec === segment.startSec && v.endSec === segment.endSec,
-      );
-      const visualSummary = visual?.summary ?? null;
-      const visualTags = visual ? (JSON.parse(visual.tagsJson) as string[]) : [];
-      const visualShotType = visual?.shotType ?? null;
-
-      if (segment.text === "") {
-        // No speech at all (silent B-roll, or nothing Whisper could
-        // transcribe) — without visual proof this segment is worth nothing
-        // to a selector, so only add it once vision analysis has run.
-        if (!visual) continue;
-      }
+      if (segment.text.trim() === "") continue;
 
       candidates.push({
         mediaAssetId: asset.id,
@@ -91,9 +76,6 @@ async function buildCandidates(
         startSec: segment.startSec,
         endSec: segment.endSec,
         text: segment.text,
-        visualSummary,
-        visualTags,
-        visualShotType,
       });
     }
   }
