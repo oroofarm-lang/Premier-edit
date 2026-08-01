@@ -56,6 +56,35 @@ body {
   margin-bottom: 8px;
 }
 
+#not-chosen-details {
+  margin-top: 8px;
+}
+
+#not-chosen-details > summary {
+  cursor: pointer;
+  font-size: 11px;
+}
+
+#not-chosen-details[open] > summary {
+  margin-bottom: 4px;
+}
+
+#not-chosen-list {
+  margin: 0;
+  padding: 6px 6px 6px 18px;
+  max-height: 160px;
+  overflow-y: auto;
+  background-color: var(--cosmic-surface);
+  border: 1px solid var(--cosmic-border);
+  border-radius: 6px;
+}
+
+#not-chosen-list li {
+  font-size: 11px;
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
 /* Each of these can grow past the docked panel's height on its own (a real
    cut easily has 7-13 moments, plus a turn per refinement instruction, plus
    a diff line per moment) — bounding each list to its own scroll region

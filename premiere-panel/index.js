@@ -186,6 +186,29 @@ function renderSelectionList(ulId, selections) {
   });
 }
 
+function renderNotChosen(notChosen) {
+  const details = document.getElementById("not-chosen-details");
+  if (!notChosen || notChosen.length === 0) {
+    details.hidden = true;
+    return;
+  }
+  details.hidden = false;
+  details.open = false;
+  document.getElementById("not-chosen-summary").textContent =
+    `עוד ${notChosen.length} רגעים שנשקלו ולא נבחרו`;
+  const ul = document.getElementById("not-chosen-list");
+  ul.innerHTML = "";
+  for (const c of notChosen) {
+    const li = document.createElement("li");
+    li.setAttribute("dir", "auto");
+    const parts = [`${c.fileName} · ${c.startSec.toFixed(2)}–${c.endSec.toFixed(2)}s`];
+    if (c.text) parts.push(c.text);
+    if (c.visualSummary) parts.push(`👁 ${c.visualSummary}`);
+    li.textContent = parts.join(" — ");
+    ul.appendChild(li);
+  }
+}
+
 function renderProfileChips(state) {
   const container = document.getElementById("profile-chips");
   container.innerHTML = "";
@@ -274,6 +297,7 @@ async function loadState(projectId) {
     document.getElementById("cut-beatplan").textContent =
       beatPlan.length > 0 ? `מבנה: ${beatPlan.join(" ← ")}` : "";
     renderSelectionList("cut-list", state.selections);
+    renderNotChosen(state.notChosen);
 
     if (!state.canRefine) {
       showBlock("refine-block", false);

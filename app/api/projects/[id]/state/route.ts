@@ -139,12 +139,47 @@ export async function GET(
       }
     }
 
+    type ShortlistEntry = {
+      mediaAssetId: string;
+      filePath: string;
+      startSec: number;
+      endSec: number;
+      text: string;
+      visualSummary?: string | null;
+      chosenOrder: number | null;
+    };
+    let notChosen: {
+      fileName: string;
+      startSec: number;
+      endSec: number;
+      text: string | null;
+      visualSummary: string | null;
+    }[] = [];
+    if (project.selectionShortlistJson) {
+      try {
+        const shortlist = JSON.parse(project.selectionShortlistJson) as ShortlistEntry[];
+        notChosen = shortlist
+          .filter((c) => c.chosenOrder === null)
+          .sort((a, b) => a.filePath.localeCompare(b.filePath) || a.startSec - b.startSec)
+          .map((c) => ({
+            fileName: fileNameById.get(c.mediaAssetId) ?? c.filePath.split("/").pop() ?? c.filePath,
+            startSec: c.startSec,
+            endSec: c.endSec,
+            text: c.text || null,
+            visualSummary: c.visualSummary || null,
+          }));
+      } catch {
+        notChosen = [];
+      }
+    }
+
     return NextResponse.json({
       outputProfile: project.outputProfile,
       premise: project.selectionPremise,
       beatPlan,
       selections: toPanelSelections(liveSelections, fileNameById),
       canRefine: project.selectionShortlistJson !== null,
+      notChosen,
       profilePreviews,
       refinementDraft,
     });
