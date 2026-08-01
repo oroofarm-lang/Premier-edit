@@ -2,8 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { stat } from "node:fs/promises";
 import { prisma } from "@/lib/db";
+import {
+  OUTPUT_PROFILES,
+  ProjectInputError,
+  createProjectRecord,
+} from "@/lib/projects/create";
 import { runIngest } from "@/lib/ingest/run";
 import { runTranscription } from "@/lib/transcription/run";
 import {
@@ -19,53 +23,30 @@ import {
 import { runExport } from "@/lib/export/run";
 import type { OutputProfile } from "@/lib/generated/prisma/enums";
 
-const OUTPUT_PROFILES = ["REEL_SHORT", "SOCIAL_POST", "YOUTUBE_LONG"] as const;
-
 export type ActionState = { error: string } | null;
-
-async function assertFolderExists(label: string, folder: string) {
-  try {
-    const info = await stat(folder);
-    if (!info.isDirectory()) throw new Error("not a directory");
-  } catch {
-    throw new Error(`${label} is not a folder that exists on this machine: ${folder}`);
-  }
-}
 
 export async function createProject(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const name = String(formData.get("name") ?? "").trim();
-  const outputProfile = String(formData.get("outputProfile") ?? "");
-  const brief = String(formData.get("brief") ?? "").trim();
-  const footageFolder = String(formData.get("footageFolder") ?? "").trim();
-  const audioFolder = String(formData.get("audioFolder") ?? "").trim();
-
-  if (!name) return { error: "Project name is required." };
-  if (!footageFolder) return { error: "Footage folder is required." };
-  if (!OUTPUT_PROFILES.includes(outputProfile as OutputProfile)) {
-    return { error: "Pick an output profile." };
-  }
-
+  let projectId: string;
   try {
-    await assertFolderExists("Footage folder", footageFolder);
-    if (audioFolder) await assertFolderExists("Audio folder", audioFolder);
+    const project = await createProjectRecord({
+      name: String(formData.get("name") ?? ""),
+      outputProfile: String(formData.get("outputProfile") ?? ""),
+      brief: String(formData.get("brief") ?? ""),
+      footageFolder: String(formData.get("footageFolder") ?? ""),
+      audioFolder: String(formData.get("audioFolder") ?? ""),
+    });
+    projectId = project.id;
   } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error) };
+    if (error instanceof ProjectInputError) return { error: error.message };
+    throw error;
   }
 
-  const project = await prisma.project.create({
-    data: {
-      name,
-      outputProfile: outputProfile as OutputProfile,
-      brief: brief || null,
-      footageFolder,
-      audioFolder: audioFolder || null,
-    },
-  });
-
-  redirect(`/projects/${project.id}`);
+  // Outside the try: redirect() signals by throwing, so catching around it
+  // would swallow the navigation.
+  redirect(`/projects/${projectId}`);
 }
 
 export async function ingestProject(projectId: string): Promise<void> {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getJobs } from "@/lib/pipeline/jobs";
 import { diffSelections } from "@/lib/selection/refine-plan";
 import type { RefinementDraft } from "@/lib/selection/refine-plan";
 import type { SelectedSegment } from "@/lib/selection/types";
@@ -44,11 +45,14 @@ export async function GET(
     const project = await prisma.project.findUniqueOrThrow({
       where: { id: params.id },
       include: {
-        mediaAssets: { select: { id: true, filePath: true } },
+        mediaAssets: {
+          select: { id: true, filePath: true, transcript: { select: { id: true } } },
+        },
         selections: {
           orderBy: { order: "asc" },
           include: { mediaAsset: true, videoAsset: true },
         },
+        checkpoints: { select: { stage: true, approved: true } },
       },
     });
 
@@ -173,8 +177,41 @@ export async function GET(
       }
     }
 
+    // Whether a stage is *done* comes from the database; whether it is
+    // *running* comes from the in-memory job registry. Keeping those two
+    // sources separate is what makes the panel survive a dev-server restart
+    // without ever claiming finished work is unfinished.
+    const jobs = getJobs(params.id);
+    const approvedStages = new Set(
+      project.checkpoints.filter((c) => c.approved).map((c) => c.stage),
+    );
+    const transcriptCount = project.mediaAssets.filter((a) => a.transcript).length;
+
+    const stages = {
+      ingest: {
+        done: project.mediaAssets.length > 0,
+        detail: `${project.mediaAssets.length} file(s)`,
+        approved: approvedStages.has("INGEST"),
+        job: jobs.ingest,
+      },
+      transcribe: {
+        done: transcriptCount > 0 && transcriptCount === project.mediaAssets.length,
+        detail: `${transcriptCount}/${project.mediaAssets.length} transcribed`,
+        approved: approvedStages.has("TRANSCRIPTION"),
+        job: jobs.transcribe,
+      },
+      select: {
+        done: project.selections.length > 0,
+        detail: `${project.selections.length} moment(s)`,
+        approved: approvedStages.has("CONTENT_SELECTION"),
+        job: jobs.select,
+      },
+    };
+
     return NextResponse.json({
+      name: project.name,
       outputProfile: project.outputProfile,
+      stages,
       premise: project.selectionPremise,
       beatPlan,
       selections: toPanelSelections(liveSelections, fileNameById),
@@ -185,10 +222,14 @@ export async function GET(
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const notFound = message.includes("No record was found for a query");
-    return NextResponse.json(
-      { error: message },
-      { status: notFound ? 404 : 500 },
-    );
+    // Prisma's own not-found message is a multi-line invocation dump. The
+    // panel renders whatever it gets, so give it something readable.
+    if (message.includes("No record was found for a query")) {
+      return NextResponse.json(
+        { error: `No project found for id ${params.id}` },
+        { status: 404 },
+      );
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
