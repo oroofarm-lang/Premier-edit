@@ -68,6 +68,22 @@ Note the file split: pure logic (prompt assembly, draft reconstruction, diffing)
 
 See [[Decisions and Open Questions]] for why FCP7 XML was chosen over OTIO for the timeline format, and for the open question on whether the B-roll override ever fires on its own.
 
+## Expert layer
+
+`lib/experts/` — eleven domain modules, one per area of craft, indexed in [[Agents]]. Each exports typed knowledge plus a `promptSection(ctx)` that returns the text it contributes for a given stage and output profile, or `null` when it has nothing to say.
+
+**An expert is not an LLM call.** This is the decision that reconciles "I want a crew of agents" with "stop burning tokens" — the two only conflict if an agent is assumed to be a model invocation. Adding an expert adds prose to a call that already runs. The pipeline still makes exactly three model calls (vision captioning, content selection, and a refinement turn when asked), and the selection prompt's knowledge section grew from ~1k to ~4.7k characters — roughly 1.5k extra input tokens per selection, which is fractions of a cent, against eleven extra calls if each expert had been an agent in the literal sense.
+
+Silence is the mechanism that keeps this cheap: `contributingExperts()` is narrower than `expertsForStage()`, because a platform expert participates in `selection` but returns `null` for a profile it doesn't cover. A REEL_SHORT selection sees `platform-reels` and never sees the other two.
+
+> [!bug] One guidelines blob was actively wrong for two of three profiles
+> `lib/editing/social-guidelines.ts` (now absorbed and deleted) sent identical text to every output profile: target 15-20 seconds, avoid a 30-40 second drop-off zone, cut every 1.5-2.5 seconds. For `YOUTUBE_LONG` with a several-minute target, all three instructions were wrong. Platform knowledge is now scoped per profile, and `platform-youtube` opens by explicitly telling the model the short-form rules don't apply.
+
+> [!bug] The pre-filter and the hook rule were pulling against each other
+> `HeuristicContentSelector.durationFitness` scored 3-10s segments at 1.0 and ≤3s segments at 0.7 — while `validatePlan` rejects any plan whose **opening** moment exceeds the 3s hook window. Because the heuristic also builds the LLM selector's shortlist, short punchy moments could be filtered out before the model ever saw them, leaving it unable to write a plan that passes its own validator. Fixed by scoring duration against the `pacing` expert's per-profile ranges instead of one fixed curve. This is the most likely single cause of the "it picks the wrong moments" complaint, though it has not yet been re-measured on real footage.
+
+The notes under `Volt/Agents/` are **generated** from the registry by `npm run generate:agent-notes` (`scripts/generate-agent-notes.ts`, needs the `tsx` dev dependency added for it). Editing them by hand is pointless — edit the expert in code and regenerate. A unit test asserts every `worksWith` id resolves to a real expert, so no generated wikilink can dangle.
+
 ## Stage 2 UXP panel (`premiere-panel/`)
 
 Reads an approved cut over HTTP from the local app (port 3002) and builds it directly into a new Premiere sequence via the real `premierepro` UXP API — no XML round-trip. As of 2026-08-01 the panel has full feature parity with the web app (profile switching, conversational refinement, beat-structure display, the "considered but not chosen" shortlist, and triggering a fresh multi-profile generation) — see [[Decisions and Open Questions]] for how that closed in stages. Several real defects only showed up testing against actual Premiere, not from reading the API types:

@@ -18,6 +18,7 @@ Agent-based video editing system: natural-language instructions in, real edits i
 ## Notes in this vault
 
 - [[Tech Stack]] — what the system is built on, and the non-obvious gotchas
+- [[Agents]] — the crew of local expert brains, one note each, generated from the code
 - [[Pipeline and Agents]] — the MVP pipeline stages and the planned agent roster
 - [[Decisions and Open Questions]] — what's been resolved so far, and what's still open
 - [[Progress Log]] — what's actually been done, step by step
