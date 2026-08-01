@@ -45,6 +45,10 @@ export type ShotWindow = {
   stability: number;
   /** 0..1 — the window ends settled rather than mid-movement. */
   movementCompleteness: number;
+  /** 0..1 — how much is happening in frame. A locked-off shot of nothing
+   * scores 0; a pour or a hand entering frame scores high. Independent of
+   * `stability`, which reads jitter rather than level. */
+  activity: number;
   /** 0..1, or null when blur was not measured. */
   sharpness: number | null;
   /** 0..1, or null when luma was not measured. */

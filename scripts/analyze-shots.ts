@@ -95,6 +95,7 @@ async function main() {
         `q=${w.qualityScore.toFixed(2)}`,
         `steady=${w.stability.toFixed(2)}`,
         `complete=${w.movementCompleteness.toFixed(2)}`,
+        `active=${w.activity.toFixed(2)}`,
       ];
       if (w.sharpness !== null) parts.push(`sharp=${w.sharpness.toFixed(2)}`);
       if (w.exposure !== null) parts.push(`expo=${w.exposure.toFixed(2)}`);

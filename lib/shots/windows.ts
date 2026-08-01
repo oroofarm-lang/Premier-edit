@@ -22,6 +22,12 @@ import { DEFAULT_WINDOWING } from "./types";
 const SHARP_BLUR = 4.5;
 const BLURRY_BLUR = 28;
 
+/**
+ * Lower bound for the jitter reference scale, as a fraction of the clip's own
+ * motion range. See computeBaseline for why a floor is needed at all.
+ */
+const JITTER_FLOOR_FRACTION = 0.08;
+
 /** Brightness band (mean luma, 0-255) treated as correctly exposed. */
 const LUMA_GOOD_MIN = 50;
 const LUMA_GOOD_MAX = 205;
@@ -60,11 +66,16 @@ export function computeBaseline(
     if (inWindow.length >= 3) jitters.push(jitter(inWindow.map((s) => s.value)));
   }
 
-  return {
-    motionP10,
-    motionP90,
-    jitterP90: jitters.length > 0 ? percentile(jitters, 0.9) : 0,
-  };
+  // Jitter is only meaningful relative to how much the picture moves at all.
+  // Without a floor the reference collapses on footage that is mostly locked
+  // off — a tripod clip with one camera move in it drives jitterP90 toward
+  // zero, and then that single legitimate move scores as maximum shake. The
+  // floor is a fraction of the clip's own motion range, so it scales with the
+  // material rather than being an absolute guess.
+  const measured = jitters.length > 0 ? percentile(jitters, 0.9) : 0;
+  const floor = (motionP90 - motionP10) * JITTER_FLOOR_FRACTION;
+
+  return { motionP10, motionP90, jitterP90: Math.max(measured, floor) };
 }
 
 function scoreStability(
@@ -110,6 +121,42 @@ function scoreMovementCompleteness(
   const tailStart = Math.max(1, Math.floor(values.length * 0.75));
   const endLevel = mean(values.slice(tailStart));
   return 1 - clamp01((endLevel - baseline.motionP10) / rise);
+}
+
+/**
+ * Is anything actually happening?
+ *
+ * This exists because of user feedback on the first real catalogue: the
+ * windows it returned were genuinely well-shot, but they kept landing on the
+ * calm moments *around* the action rather than on the action itself — the
+ * pour from pot to glass, the sage going into the pot. That was not a bug in
+ * the measurements, it was a direct consequence of scoring only steadiness
+ * and settling: a locked-off shot of nothing scored 1.00 on both.
+ *
+ * The signal was already in the data and simply unused. Stability reads the
+ * curve's *jitter*; this reads its *level*. A pour in front of a static
+ * camera produces large, sustained frame differences with little jitter,
+ * while shake produces jitter with no sustained level — so the two are
+ * independent, and a shot can now be rewarded for being eventful and
+ * punished for being unsteady at the same time.
+ *
+ * Note this is exactly where frame differencing's inability to separate
+ * camera motion from subject motion stops being a limitation and becomes the
+ * point: subject motion is what "something is happening" means.
+ */
+function scoreActivity(
+  metrics: ClipMetrics,
+  baseline: ClipBaseline,
+  startSec: number,
+  endSec: number,
+): number {
+  const values = samplesInRange(metrics.motion, startSec, endSec).map(
+    (s) => s.value,
+  );
+  if (values.length === 0) return 0;
+  const range = baseline.motionP90 - baseline.motionP10;
+  if (range <= 0) return 0;
+  return clamp01((mean(values) - baseline.motionP10) / range);
 }
 
 function scoreSharpness(
@@ -164,11 +211,26 @@ function scoreExposure(
  * a long mediocre window beat a short excellent one.
  */
 const WEIGHTS = {
-  stability: 0.32,
-  movementCompleteness: 0.32,
-  sharpness: 0.18,
-  exposure: 0.08,
-  length: 0.1,
+  /**
+   * The largest single share, and deliberately larger than `stability`.
+   *
+   * The first catalogue was reviewed against real footage and the verdict was
+   * that the frames were genuinely good but kept missing the thing worth
+   * watching — the pour from pot to glass, the sage going into the pot. A
+   * unit test then reproduced the cause exactly: a flawless empty frame
+   * outscored a contained action, because stillness collected full marks on
+   * both craft signals while the action paid for its own ramp-in and
+   * ramp-out. Weighting activity above stability is what makes an eventful
+   * shot beat an immaculate boring one, which is the ranking the user asked
+   * for. A handheld shot of the pour now also outranks a locked-off shot of
+   * nothing — intended, not a side effect.
+   */
+  activity: 0.3,
+  movementCompleteness: 0.24,
+  stability: 0.18,
+  sharpness: 0.14,
+  exposure: 0.06,
+  length: 0.08,
 } as const;
 
 export function scoreWindow(
@@ -186,6 +248,7 @@ export function scoreWindow(
     startSec,
     endSec,
   );
+  const activity = scoreActivity(metrics, baseline, startSec, endSec);
   const sharpness = scoreSharpness(metrics, startSec, endSec);
   const exposure = scoreExposure(metrics, startSec, endSec);
 
@@ -198,6 +261,7 @@ export function scoreWindow(
   const present: [number, number][] = [
     [stability, WEIGHTS.stability],
     [movementCompleteness, WEIGHTS.movementCompleteness],
+    [activity, WEIGHTS.activity],
     [length, WEIGHTS.length],
   ];
   if (sharpness !== null) present.push([sharpness, WEIGHTS.sharpness]);
@@ -215,6 +279,7 @@ export function scoreWindow(
     source,
     stability: round(stability),
     movementCompleteness: round(movementCompleteness),
+    activity: round(activity),
     sharpness: sharpness === null ? null : round(sharpness),
     exposure: exposure === null ? null : round(exposure),
     qualityScore: round(qualityScore),

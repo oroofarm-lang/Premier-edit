@@ -151,6 +151,58 @@ describe("scoreWindow", () => {
     expect(scoreOf(held, 0.2, 1.8).movementCompleteness).toBe(1);
   });
 
+  it("separates something-happening from camera shake", () => {
+    // The distinction the user's feedback turned on: a pour in front of a
+    // steady camera is eventful and smooth; shake is neither.
+    const eventful = [...flat(30, 3), ...flat(40, 30), ...flat(30, 3)];
+    const shaky = [...flat(30, 3), ...flat(40, 16, 14), ...flat(30, 3)];
+
+    const pour = scoreOf(eventful, 3.5, 6.5);
+    const shake = scoreOf(shaky, 3.5, 6.5);
+
+    expect(pour.activity).toBeGreaterThan(0.8);
+    expect(shake.activity).toBeGreaterThan(0.3); // shake registers as motion
+    expect(pour.stability).toBeGreaterThan(shake.stability); // but not as steady
+    expect(pour.qualityScore).toBeGreaterThan(shake.qualityScore);
+  });
+
+  it("no longer gives a shot of nothing a near-perfect score", () => {
+    // Before activity was scored, a locked-off window of nothing took 1.00 on
+    // both stability and completeness — the exact reason the first catalogue
+    // kept returning the calm moments around the action instead of the action.
+    // A real action ramps in and out over a few tenths of a second rather
+    // than stepping instantly, and the ramp shape matters: an instant step is
+    // indistinguishable from a one-frame glitch.
+    const ramp = (from: number, to: number, n: number) =>
+      Array.from({ length: n }, (_, i) => from + ((to - from) * (i + 1)) / n);
+    const clip = [
+      ...flat(35, 3), // calm      0.1 - 3.5
+      ...ramp(3, 30, 6), // rises  3.6 - 4.1
+      ...flat(18, 30), // action   4.2 - 5.9
+      ...ramp(30, 3, 6), // settles 6.0 - 6.5
+      ...flat(35, 3), // calm      6.6 - 10.0
+    ];
+    const still = scoreOf(clip, 0.5, 3.5);
+    const wholeAction = scoreOf(clip, 3.4, 7.4);
+    const cutMidAction = scoreOf(clip, 4.0, 5.8);
+
+    expect(still.stability).toBeGreaterThan(0.9);
+    expect(still.activity).toBeLessThan(0.1);
+
+    // A contained action beats a shot of nothing. Activity lands around 0.6
+    // rather than near 1 because the window deliberately includes the ramp in
+    // and the settle at its edges — that is what "contained" means.
+    expect(wholeAction.activity).toBeGreaterThan(0.5);
+    expect(wholeAction.movementCompleteness).toBeGreaterThan(0.9);
+    expect(wholeAction.qualityScore).toBeGreaterThan(still.qualityScore);
+
+    // But an action cut off mid-pour does not — the two rules work together:
+    // "something is happening" and "it finishes" are both required.
+    expect(cutMidAction.activity).toBeGreaterThan(0.9);
+    expect(cutMidAction.movementCompleteness).toBeLessThan(0.2);
+    expect(cutMidAction.qualityScore).toBeLessThan(wholeAction.qualityScore);
+  });
+
   it("scores sharpness from measured blur anchors", () => {
     const motion = curve(flat(50, 5));
     const sharp: ClipMetrics = { motion, blur: curve(flat(50, 4.5)) };
@@ -190,26 +242,26 @@ describe("findShotWindows", () => {
       ...flat(40, 20, 8), // shaky
       ...flat(40, 3), // calm hold
     ];
-    const windows = findShotWindows({ motion: curve(values) }, [], 16);
+    const metrics = { motion: curve(values) };
+    const windows = findShotWindows(metrics, [], 16);
     expect(windows.length).toBeGreaterThan(0);
 
-    const inCalm = (w: { startSec: number; endSec: number }) =>
-      (w.startSec >= 4 && w.endSec <= 8.1) || (w.startSec >= 12 && w.endSec <= 16.1);
+    // Since activity is scored, "calm always wins" is no longer the rule and
+    // should not be asserted: a window that starts moving and settles into a
+    // hold is a legitimately good shot. The property that must hold is
+    // narrower — a window spent entirely inside the shaky stretch must lose
+    // to one spent entirely inside the calm stretch.
+    const baseline = computeBaseline(metrics);
+    const shaky = scoreWindow(metrics, baseline, 0.2, 4.0, "motion-window");
+    const calm = scoreWindow(metrics, baseline, 4.2, 8.0, "motion-window");
+    expect(shaky.qualityScore).toBeLessThan(calm.qualityScore);
 
-    // The catalogue is a ranked shortlist, not a filter: a window straddling
-    // the calm/shaky boundary scores mediocre and may still be catalogued
-    // after the good ones. What must hold is that the calm stretches win.
-    const best = [...windows].sort((a, b) => b.qualityScore - a.qualityScore)[0];
-    expect(inCalm(best), `best window ${best.startSec}-${best.endSec}`).toBe(true);
-
-    const worstCalm = Math.min(
-      ...windows.filter(inCalm).map((w) => w.qualityScore),
-    );
-    const bestStraddling = Math.max(
-      0,
-      ...windows.filter((w) => !inCalm(w)).map((w) => w.qualityScore),
-    );
-    expect(worstCalm).toBeGreaterThan(bestStraddling);
+    // And nothing catalogued may sit wholly within a shaky stretch.
+    for (const w of windows) {
+      const whollyShaky =
+        (w.startSec >= 0 && w.endSec <= 4.0) || (w.startSec >= 8 && w.endSec <= 12.0);
+      expect(whollyShaky, `${w.startSec}-${w.endSec}`).toBe(false);
+    }
   });
 
   it("returns non-overlapping windows in chronological order", () => {
