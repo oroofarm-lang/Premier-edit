@@ -14,6 +14,7 @@ const uxpFs = require("uxp").storage.localFileSystem;
 const { buildSequence, fetchProjects, fetchPlan, APP_ORIGIN } = require("./build-sequence");
 const {
   fetchState,
+  generateVideoLayer,
   applyProfile,
   sendRefinement,
   applyDraft,
@@ -544,6 +545,45 @@ function renderSelectionList(ulId, selections) {
   });
 }
 
+/**
+ * The picture layer, listed separately from the moments above because it is
+ * a separate timeline: it has its own count, its own boundaries, and its own
+ * rhythm. Folding it into the moment list would suggest a one-to-one
+ * relationship that deliberately does not exist.
+ */
+function renderVideoLayer(videoLayer) {
+  const block = el("video-layer-block");
+  if (!videoLayer || videoLayer.length === 0) {
+    block.hidden = true;
+    return;
+  }
+  block.hidden = false;
+
+  const withAudio = videoLayer.filter((v) => v.useSourceAudio).length;
+  const covered = videoLayer[videoLayer.length - 1].timelineEndSec;
+  el("video-layer-count").textContent =
+    `${videoLayer.length} shots · ${covered.toFixed(1)}s` +
+    (withAudio > 0 ? ` · ${withAudio} with sound` : "");
+
+  const ul = el("video-layer-list");
+  ul.innerHTML = "";
+  for (const [i, v] of videoLayer.entries()) {
+    const li = document.createElement("li");
+    li.setAttribute("dir", "auto");
+    const length = (v.timelineEndSec - v.timelineStartSec).toFixed(1);
+    const head = `${i + 1}. ${v.timelineStartSec.toFixed(1)}s · ${length}s · ${v.fileName} @${v.sourceStartSec.toFixed(1)}s`;
+    li.textContent = v.useSourceAudio ? `${head} 🔊` : head;
+    if (v.reason) {
+      const why = document.createElement("div");
+      why.className = "meta";
+      why.setAttribute("dir", "auto");
+      why.textContent = v.reason;
+      li.appendChild(why);
+    }
+    ul.appendChild(li);
+  }
+}
+
 function renderNotChosen(notChosen) {
   const details = el("not-chosen-details");
   if (!notChosen || notChosen.length === 0) {
@@ -645,6 +685,7 @@ function renderCutScreen(state) {
     beatPlan.length > 0 ? `מבנה: ${beatPlan.join(" ← ")}` : "";
   renderSelectionList("cut-list", state.selections);
   renderNotChosen(state.notChosen);
+  renderVideoLayer(state.videoLayer);
 
   const refine = el("refine-block");
   if (!state.canRefine) {
@@ -675,6 +716,32 @@ async function onApplyProfile(outputProfile) {
     setStatus(`Switched to ${PROFILE_LABELS[outputProfile]}.`);
   } catch (err) {
     setStatus(`Could not switch profile: ${err.message}`, { error: true });
+  }
+}
+
+/**
+ * Builds the picture layer. Slow by nature — a vision pass over the best
+ * shots plus one layout call — so the status line says so rather than
+ * leaving the panel looking hung.
+ */
+async function onGenerateVideoLayer() {
+  if (!currentProjectId) return;
+  const button = el("generate-video-button");
+  setDisabled(button, true);
+  setStatus("Building the picture layer — describing shots, then laying them out. A few minutes.", {
+    loading: true,
+  });
+  try {
+    const result = await generateVideoLayer(currentProjectId);
+    const state = await refreshState();
+    if (state) renderCutScreen(state);
+    setStatus(
+      `Picture layer ready: ${result.placements} shot(s) over ${result.spineDurationSec}s.`,
+    );
+  } catch (err) {
+    setStatus(`Could not build the picture layer: ${err.message}`, { error: true });
+  } finally {
+    setDisabled(button, false);
   }
 }
 
@@ -762,6 +829,7 @@ window.addEventListener("load", async () => {
   );
 
   el("generate-profiles-button").addEventListener("click", onGenerateAllProfiles);
+  el("generate-video-button").addEventListener("click", onGenerateVideoLayer);
   el("refine-send-button").addEventListener("click", onSendRefinement);
   el("draft-apply-button").addEventListener("click", onApplyDraft);
   el("draft-discard-button").addEventListener("click", onDiscardDraft);

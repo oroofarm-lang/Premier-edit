@@ -181,6 +181,24 @@ export async function GET(
     // *running* comes from the in-memory job registry. Keeping those two
     // sources separate is what makes the panel survive a dev-server restart
     // without ever claiming finished work is unfinished.
+    // The picture layer is a second, independent timeline — the user thinks
+    // about it separately from the spoken story, so the panel shows it
+    // separately rather than folding it into the moment list.
+    const placements = await prisma.videoPlacement.findMany({
+      where: { projectId: params.id },
+      orderBy: { order: "asc" },
+      include: { shot: { include: { mediaAsset: { select: { filePath: true } } } } },
+    });
+    const videoLayer = placements.map((p) => ({
+      fileName: p.shot.mediaAsset.filePath.split("/").pop() ?? "",
+      timelineStartSec: p.timelineStartSec,
+      timelineEndSec: p.timelineEndSec,
+      sourceStartSec: p.shot.startSec,
+      useSourceAudio: p.useSourceAudio,
+      reason: p.reason,
+      qualityScore: p.shot.qualityScore,
+    }));
+
     const jobs = getJobs(params.id);
     const approvedStages = new Set(
       project.checkpoints.filter((c) => c.approved).map((c) => c.stage),
@@ -212,6 +230,7 @@ export async function GET(
       name: project.name,
       outputProfile: project.outputProfile,
       stages,
+      videoLayer,
       premise: project.selectionPremise,
       beatPlan,
       selections: toPanelSelections(liveSelections, fileNameById),

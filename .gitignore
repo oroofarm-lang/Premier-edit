@@ -61,3 +61,6 @@ next-env.d.ts
 
 # Git worktrees used for isolated feature work (superpowers:using-git-worktrees)
 /.worktrees
+
+# Scratch copy of the panel served over HTTP for verification (npm run panel:preview)
+public/_panel

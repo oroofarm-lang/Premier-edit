@@ -70,8 +70,13 @@ function approveStage(projectId, stage) {
   return postJson(`/api/projects/${projectId}/approve`, { stage });
 }
 
+function generateVideoLayer(projectId) {
+  return postJson(`/api/projects/${projectId}/video-layout`);
+}
+
 module.exports = {
   fetchState,
+  generateVideoLayer,
   applyProfile,
   sendRefinement,
   applyDraft,

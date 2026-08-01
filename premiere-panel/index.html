@@ -115,6 +115,24 @@
         <div id="cut-beatplan" class="body muted" dir="auto"></div>
         <ul id="cut-list" class="scroll-region"></ul>
 
+        <div id="video-layer-block" hidden>
+          <div class="section-head">
+            <span>Picture layer</span>
+            <span id="video-layer-count" class="meta"></span>
+          </div>
+          <div class="body muted">
+            The picture is chosen separately from the sound and changes on its
+            own rhythm, so these do not line up with the moments above.
+          </div>
+          <ul id="video-layer-list" class="scroll-region"></ul>
+        </div>
+
+        <div class="actions">
+          <sp-button id="generate-video-button" variant="secondary" quiet>
+            Generate picture layer
+          </sp-button>
+        </div>
+
         <details id="not-chosen-details" hidden>
           <summary id="not-chosen-summary" class="meta"></summary>
           <ul id="not-chosen-list" class="scroll-region"></ul>
