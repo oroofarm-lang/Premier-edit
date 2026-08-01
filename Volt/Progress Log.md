@@ -11,6 +11,15 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-08-01 — Reconciled the reference notes with the architecture that shipped today
+
+- **The Progress Log was current and the reference notes were not**, which is the wrong way round: the log is a chronology, but [[Tech Stack]], [[Decisions and Open Questions]] and [[Pipeline and Agents]] are what someone reads to understand the system, and all three still described the single-selection pipeline. A grep for `audio spine`, `shot catalogue`, `VideoPlacement` or `two-timeline` across the three returned **zero hits** after a day of building exactly those. Commit `78e6d03`.
+- **[[Pipeline and Agents]]** — the diagram forks now. Ingest feeds the transcript *and* the shot catalogue; the audio spine and the catalogue meet at video layout, then split again into the panel build and the FCP7 fallback.
+- **[[Tech Stack]]** — a "Two timelines" section carrying the four scored signals with their weights, the ordering that controls cost (vision runs only on the 40 shots the free score selects), and the four bugs worth carrying forward. Also corrects the stack table, which still listed the Anthropic API as a hard requirement when every stage now has a free path.
+- **[[Decisions and Open Questions]]** — four resolutions and three open questions. The open ones are all the user's and none are built: whether the picture layer reads well to a human eye (their own verdict was "not smooth or pretty yet", deliberately parked), offering a sequence preset rather than always deriving one, and cutting to music beats.
+- **[[Agents]]** — regenerated from the registry, now twelve notes with `cinematography` added.
+- Worth stating as a habit rather than an incident: **finishing the code and logging it is not finishing the documentation.** The reference notes drifted a full day behind in a single session because each commit updated the chronology and nothing updated the description.
+
 ## 2026-08-01 — Ran everything end to end; found a silent data-loss bug and removed the API dependency
 
 - **Running the whole thing rather than the changed part paid for itself twice.** `npx next build` (stronger than dev mode) passed and registered every route — but the same sweep exposed two real problems that targeted checks had missed.
