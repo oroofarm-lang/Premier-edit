@@ -11,6 +11,15 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-08-01 — Phase 4: the picture layer reaches the timeline
+
+- **Until this commit the video layer existed only in the database.** A build produced the improved audio spine with each moment's own picture; the 20 placements the layout stage chose were invisible in Premiere. Commit `8d51159` closes that.
+- `CutTimeline` gains an **optional** `videoLayer`. Optional deliberately: a project that has only run selection keeps building exactly as before, so nothing regresses while the two-timeline model is half rolled out. `buildCutTimeline` reads `VideoPlacement` and clamps each span into its shot — a source out-point past the end of a file is the one error Premiere reports late and unhelpfully.
+- **The panel places both layers with the same park-the-unwanted-half trick the B-roll path already proved.** A spine clip goes down for its sound with its picture parked on the scratch video track; a picture clip goes down for its image with its sound parked on the scratch audio track — except where the layout marked a sound effect worth keeping, which lands on A2 under the narration. Reusing a proven mechanism rather than inventing a second one.
+- **A useful thing fell out of the vertical-sequence fix**: `buildCutTimeline` was already reporting 1080x1920. Ingest's rotation handling has been correct since the start, so the **FCP7 export path was always vertical** — only the panel's `createSequence` call, which takes no dimensions at all, ever produced a landscape sequence. The bug was narrower than it looked.
+- Verified over the real HTTP route the panel calls: 1080x1920 at 50fps, 11 spine moments, 20 picture shots, gapless coverage (max gap 0.000s), no missing sources, one shot keeping its own audio. 117 tests, `tsc` clean.
+- **Also hit and worth remembering**: after `prisma migrate` + `generate`, a *running* Next dev server keeps the old client in memory — `prisma.videoPlacement` came back `undefined` until the server was restarted. Hot reload does not cover the generated client.
+
 ## 2026-08-01 — First real build in Premiere: the sequence was landscape, and the picture cut too slowly
 
 - **The sequence opened horizontal for vertical footage.** Real defect, found by the user building a sequence in Premiere. `buildSequence` called `project.createSequence(name)` — which takes **no dimensions at all**, so Premiere used its default preset and social footage shot vertically landed in a landscape sequence. Fixed with `createSequenceFromMedia()` from the plan's first clip, so frame size, rate and pixel aspect come from the material itself. Commit `52180fa`.
