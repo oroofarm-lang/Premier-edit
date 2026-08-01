@@ -13,7 +13,8 @@
   "requiredPermissions": {
     "network": {
       "domains": ["http://localhost:3002"]
-    }
+    },
+    "localFileSystem": "request"
   },
   "entrypoints": [
     {
@@ -23,12 +24,12 @@
         "default": "Premier Edit"
       },
       "minimumSize": {
-        "width": 280,
-        "height": 300
+        "width": 300,
+        "height": 360
       },
       "preferredDockedSize": {
-        "width": 320,
-        "height": 480
+        "width": 380,
+        "height": 620
       }
     }
   ]

@@ -55,6 +55,21 @@ function generateAllProfiles(projectId) {
   return postJson(`/api/projects/${projectId}/generate-profiles`);
 }
 
+function createProject(fields) {
+  return postJson("/api/projects", fields);
+}
+
+/** Starts a pipeline stage. Returns as soon as the server accepts it (202) —
+ * the stage keeps running server-side and its progress arrives through
+ * fetchState, so transcription's five minutes never block the panel. */
+function startStage(projectId, stage) {
+  return postJson(`/api/projects/${projectId}/${stage}`);
+}
+
+function approveStage(projectId, stage) {
+  return postJson(`/api/projects/${projectId}/approve`, { stage });
+}
+
 module.exports = {
   fetchState,
   applyProfile,
@@ -62,4 +77,7 @@ module.exports = {
   applyDraft,
   discardDraft,
   generateAllProfiles,
+  createProject,
+  startStage,
+  approveStage,
 };
