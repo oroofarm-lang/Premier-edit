@@ -51,4 +51,15 @@ function discardDraft(projectId) {
   return postJson(`/api/projects/${projectId}/refine/discard`);
 }
 
-module.exports = { fetchState, applyProfile, sendRefinement, applyDraft, discardDraft };
+function generateAllProfiles(projectId) {
+  return postJson(`/api/projects/${projectId}/generate-profiles`);
+}
+
+module.exports = {
+  fetchState,
+  applyProfile,
+  sendRefinement,
+  applyDraft,
+  discardDraft,
+  generateAllProfiles,
+};

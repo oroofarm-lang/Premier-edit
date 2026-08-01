@@ -11,7 +11,14 @@
 
 const ppro = require("premierepro");
 const { buildSequence, fetchProjects, fetchPlan, APP_ORIGIN } = require("./build-sequence");
-const { fetchState, applyProfile, sendRefinement, applyDraft, discardDraft } = require("./state");
+const {
+  fetchState,
+  applyProfile,
+  sendRefinement,
+  applyDraft,
+  discardDraft,
+  generateAllProfiles,
+} = require("./state");
 
 let loadedPlan = null;
 let loadedProjectId = null;
@@ -346,6 +353,22 @@ async function onApplyProfile(outputProfile) {
   }
 }
 
+async function onGenerateAllProfiles() {
+  if (!pickedProjectId) return;
+  const button = document.getElementById("generate-profiles-button");
+  button.disabled = true;
+  setStatus("Generating all 3 profiles… this runs several model calls and can take a minute.", { loading: true });
+  try {
+    await generateAllProfiles(pickedProjectId);
+    await loadState(pickedProjectId);
+    setStatus("Ready.");
+  } catch (err) {
+    setStatus(`Could not generate profiles: ${err.message}`, { error: true });
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function onSendRefinement() {
   const input = document.getElementById("refine-input");
   const instruction = input.value.trim();
@@ -402,6 +425,9 @@ window.addEventListener("load", async () => {
     );
 
   document.getElementById("project-picker").addEventListener("change", onProjectSelected);
+  document
+    .getElementById("generate-profiles-button")
+    .addEventListener("click", onGenerateAllProfiles);
   document
     .getElementById("refine-send-button")
     .addEventListener("click", onSendRefinement);
