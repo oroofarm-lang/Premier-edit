@@ -14,16 +14,20 @@
    normal browser tab does — without an explicit height + overflow on the
    root elements, content taller than the docked panel is silently clipped
    with no scrollbar at all, rather than staying scrollable like it would in
-   a browser. */
+   a browser. `vh` is used instead of a `height: 100%` chain because it ties
+   directly to the actual viewport rather than depending on every ancestor
+   in between reporting a real (non-auto) height. */
 html {
-  height: 100%;
+  height: 100vh;
+  overflow: hidden;
 }
 
 body {
-  height: 100%;
+  height: 100vh;
   margin: 0;
   padding: 12px;
   box-sizing: border-box;
+  overflow-x: hidden;
   overflow-y: auto;
   font-family: -apple-system, sans-serif;
   background-color: var(--cosmic-bg);
@@ -40,11 +44,19 @@ body {
   margin-top: 14px;
 }
 
+/* Each of these can grow past the docked panel's height on its own (a real
+   cut easily has 7-13 moments, plus a turn per refinement instruction, plus
+   a diff line per moment) — bounding each list to its own scroll region
+   keeps any single block from pushing the actions row (Load plan/Build
+   sequence) off screen, on top of the document-level scroll above. */
 #plan-list,
-#log {
+#log,
+#cut-list,
+#refine-turns,
+#draft-diff {
   margin: 6px 0 0 0;
   padding: 6px 6px 6px 18px;
-  max-height: 220px;
+  max-height: 160px;
   overflow-y: auto;
   background-color: var(--cosmic-surface);
   border: 1px solid var(--cosmic-border);
@@ -52,9 +64,18 @@ body {
 }
 
 #plan-list li,
-#log li {
+#log li,
+#cut-list li,
+#refine-turns li,
+#draft-diff li {
   font-size: 11px;
   margin-bottom: 2px;
+  overflow-wrap: anywhere;
+}
+
+#plan-list,
+#log {
+  max-height: 220px;
 }
 
 #log {
@@ -157,10 +178,6 @@ body {
   border-color: var(--cosmic-violet);
 }
 
-#refine-turns li {
-  font-size: 11px;
-}
-
 .turn-ok {
   color: var(--cosmic-muted);
 }
@@ -175,10 +192,6 @@ body {
   background-color: var(--cosmic-surface);
   border: 1px solid var(--cosmic-border);
   border-radius: 6px;
-}
-
-#draft-diff li {
-  font-size: 11px;
 }
 
 .diff-kept {

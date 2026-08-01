@@ -270,6 +270,9 @@ async function loadState(projectId) {
     showBlock("cut-block", true);
     renderProfileChips(state);
     document.getElementById("cut-premise").textContent = state.premise ? `💡 ${state.premise}` : "";
+    const beatPlan = state.beatPlan ?? [];
+    document.getElementById("cut-beatplan").textContent =
+      beatPlan.length > 0 ? `מבנה: ${beatPlan.join(" ← ")}` : "";
     renderSelectionList("cut-list", state.selections);
 
     if (!state.canRefine) {

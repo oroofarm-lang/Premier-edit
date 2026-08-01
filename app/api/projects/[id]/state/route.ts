@@ -130,9 +130,19 @@ export async function GET(
       }
     }
 
+    let beatPlan: string[] = [];
+    if (project.selectionBeatPlan) {
+      try {
+        beatPlan = JSON.parse(project.selectionBeatPlan) as string[];
+      } catch {
+        beatPlan = [];
+      }
+    }
+
     return NextResponse.json({
       outputProfile: project.outputProfile,
       premise: project.selectionPremise,
+      beatPlan,
       selections: toPanelSelections(liveSelections, fileNameById),
       canRefine: project.selectionShortlistJson !== null,
       profilePreviews,
