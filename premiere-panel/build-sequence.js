@@ -101,6 +101,21 @@ async function ensureMediaImported(project, plan, log) {
 const SCRATCH_VIDEO_TRACK = 1;
 const SCRATCH_AUDIO_TRACK = 4;
 
+/**
+ * Length of the volume ramp at each end of an audio clip, in seconds.
+ *
+ * Short on purpose. This is not a crossfade — adjacent clips butt-join, so
+ * anything long enough to be heard as a fade would audibly duck the speech at
+ * every join. 40ms is about two frames at 50fps: long enough to stop the
+ * discontinuity that makes a butt-join click, short enough to be inaudible as
+ * a fade. The real crossfade still only exists on the FCP7 XML path, because
+ * UXP has no audio transition API at all.
+ */
+const AUDIO_FADE_SEC = 0.04;
+
+/** A clip shorter than this is left alone; two ramps would be most of it. */
+const MIN_FADEABLE_SEC = 0.2;
+
 /** Trims a project item to an in/out range, so the following overwrite edit
  * inserts exactly the chosen moment rather than the whole file.
  *
@@ -332,6 +347,165 @@ async function reportLayout(project, keptAudio, log) {
 }
 
 /**
+ * Finds the volume level parameter on an audio clip, by looking rather than
+ * by knowing.
+ *
+ * Nothing in the 4,675-line .d.ts, and nothing in Adobe's published reference,
+ * says which component in the chain is the volume or which of its params is
+ * the level. Both were checked. So this enumerates the chain, matches the
+ * component on its own reported names, and takes its first numeric param —
+ * Premiere's Volume component is Bypass (boolean) then Level (number).
+ *
+ * Everything it finds is logged. This project has twice shipped a plausible
+ * guess at a UXP signature and twice been wrong, so the first real run in
+ * Premiere is meant to *tell* us the shape rather than merely succeed or fail.
+ */
+async function findLevelParam(audioItem) {
+  const chain = await audioItem.getComponentChain();
+  const count = chain.getComponentCount();
+  const seen = [];
+
+  for (let i = 0; i < count; i++) {
+    const component = chain.getComponentAtIndex(i);
+    const matchName = await component.getMatchName();
+    const displayName = await component.getDisplayName();
+    seen.push(`${i}:${displayName || "?"}/${matchName || "?"}`);
+
+    const isVolume = /volume|level/i.test(`${matchName} ${displayName}`);
+    if (!isVolume) continue;
+
+    const paramCount = component.getParamCount();
+    for (let p = 0; p < paramCount; p++) {
+      const param = component.getParam(p);
+      const value = await param.getValueAtTime(ppro.TickTime.createWithSeconds(0));
+      if (typeof value === "number") {
+        return { componentIndex: i, paramIndex: p, value, label: `${displayName}[${p}]`, seen };
+      }
+    }
+  }
+  return { componentIndex: -1, paramIndex: -1, value: null, label: null, seen };
+}
+
+/**
+ * Works out what the level parameter's numbers mean, from the value an
+ * untouched clip already has — which is unity gain by definition.
+ *
+ * Unity reads as 0 in decibels and as 1 in a normalised scale, so the two
+ * candidates are far apart and easy to tell apart. Anything else is a scale
+ * this code has not seen, and it returns null so the caller skips: writing a
+ * ramp in the wrong units would silence the cut, which is a far worse outcome
+ * than leaving the joins as they are.
+ */
+function levelScale(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  if (Math.abs(value) < 0.001) return { unit: "dB", full: 0, quiet: -60 };
+  if (value > 0.5 && value < 1.5) return { unit: "normalised", full: value, quiet: 0 };
+  return null;
+}
+
+/**
+ * Ramps the volume up at the start and down at the end of every audio clip on
+ * the tracks the cut kept, so butt-joined speech does not click.
+ *
+ * **The one thing here that a real Premiere run must settle**: keyframe
+ * positions are written in clip-relative time (0 = the clip's own start).
+ * The type definitions give both `getStartTime()` (sequence-relative) and
+ * `getInPoint()` (source-relative) but never say which domain a component
+ * param's keyframes live in, and Adobe's reference does not either. Both
+ * times are logged for every clip so the answer is readable from one run: if
+ * the fades land in the wrong place, this assumption is why.
+ *
+ * Failure is always a skip with a reason, never a guess. The cut is already
+ * correct without fades; a wrong ramp would make it worse.
+ */
+async function smoothAudioJoins(project, keptAudio, log) {
+  const sequence = await project.getActiveSequence();
+  if (!sequence) return;
+
+  let scale = null;
+  let position = null; // { componentIndex, paramIndex } once discovered
+  let faded = 0;
+  let skipped = 0;
+
+  for (const trackIndex of [...keptAudio].sort((a, b) => a - b)) {
+    const track = await sequence.getAudioTrack(trackIndex);
+    if (!track) continue;
+    const items = await track.getTrackItems(ppro.Constants.TrackItemType.CLIP, false);
+
+    for (const item of items) {
+      try {
+        if (position === null) {
+          const found = await findLevelParam(item);
+          log(`Audio chain on A${trackIndex + 1}: ${found.seen.join(", ") || "(empty)"}`);
+          if (found.paramIndex < 0) {
+            log("No volume parameter found — leaving the audio joins as hard cuts.");
+            return;
+          }
+          scale = levelScale(found.value);
+          if (scale === null) {
+            log(
+              `Volume reads ${found.value} on an untouched clip, which is neither 0 (dB) ` +
+                `nor ~1 (normalised). Not guessing the scale — audio joins left as hard cuts.`,
+            );
+            return;
+          }
+          position = { componentIndex: found.componentIndex, paramIndex: found.paramIndex };
+          log(`Volume: ${found.label}, unity reads ${found.value} → treating as ${scale.unit}.`);
+        }
+
+        const startTick = await item.getStartTime();
+        const endTick = await item.getEndTime();
+        const startSec = startTick.seconds;
+        const endSec = endTick.seconds;
+        const durationSec = endSec - startSec;
+        if (!Number.isFinite(durationSec) || durationSec < MIN_FADEABLE_SEC) {
+          skipped += 1;
+          continue;
+        }
+
+        const fade = Math.min(AUDIO_FADE_SEC, durationSec / 3);
+        const chain = await item.getComponentChain();
+        const param = chain
+          .getComponentAtIndex(position.componentIndex)
+          .getParam(position.paramIndex);
+
+        // Clip-relative — see the note above. Logged next to the sequence
+        // time so a wrong domain is diagnosable from the log alone.
+        const points = [
+          [0, scale.quiet],
+          [fade, scale.full],
+          [durationSec - fade, scale.full],
+          [durationSec, scale.quiet],
+        ];
+
+        project.lockedAccess(() => {
+          project.executeTransaction((compoundAction) => {
+            compoundAction.addAction(param.createSetTimeVaryingAction(true));
+            for (const [atSec, value] of points) {
+              const keyframe = param.createKeyframe(value);
+              keyframe.position = ppro.TickTime.createWithSeconds(atSec);
+              compoundAction.addAction(param.createAddKeyframeAction(keyframe));
+            }
+          }, "smooth audio join");
+        });
+        faded += 1;
+      } catch (err) {
+        skipped += 1;
+        log(`Could not smooth one audio clip: ${err.message}`);
+      }
+    }
+  }
+
+  if (faded > 0) {
+    log(
+      `Smoothed ${faded} audio clip(s) with ${Math.round(AUDIO_FADE_SEC * 1000)}ms ramps` +
+        (skipped > 0 ? `, skipped ${skipped}` : "") +
+        ". Keyframe times are clip-relative — check the fades sit at the clip edges.",
+    );
+  }
+}
+
+/**
  * Places every clip at its planned timeline position using an overwrite edit,
  * so a clip never ripples the ones already placed — the plan's
  * timelineStartSec values are absolute and must be honored exactly.
@@ -387,6 +561,14 @@ async function placeClips(project, sequence, plan, mediaByName, log) {
     log(`Warning: could not clear the parked media (${err.message}).`);
   }
   await reportLayout(project, keptAudio, log);
+
+  // After the sweep, so it only ever touches audio the cut actually keeps.
+  // Never fatal: the build is already correct without it.
+  try {
+    await smoothAudioJoins(project, keptAudio, log);
+  } catch (err) {
+    log(`Warning: could not smooth the audio joins (${err.message}).`);
+  }
 }
 
 /**
@@ -516,6 +698,14 @@ async function placeTwoLayers(project, sequence, plan, mediaByName, log) {
     log(`Warning: could not clear the parked media (${err.message}).`);
   }
   await reportLayout(project, keptAudio, log);
+
+  // After the sweep, so it only ever touches audio the cut actually keeps.
+  // Never fatal: the build is already correct without it.
+  try {
+    await smoothAudioJoins(project, keptAudio, log);
+  } catch (err) {
+    log(`Warning: could not smooth the audio joins (${err.message}).`);
+  }
 }
 
 async function buildSequence(projectId, log) {

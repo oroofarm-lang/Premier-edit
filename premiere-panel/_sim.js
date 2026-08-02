@@ -51,6 +51,54 @@ function track(list, index) {
   return list[index];
 }
 
+/**
+ * An AudioClipTrackItem as build-sequence.js uses it: a component chain whose
+ * volume component reports a unity value, and a level param that records the
+ * keyframes written to it so the test can assert the ramp shape.
+ *
+ * `state.levelUnity` chooses what an untouched clip reads — 0 for decibels,
+ * 1 for a normalised scale, or something else entirely to check that the code
+ * refuses to guess.
+ */
+function audioItemApi(state, item) {
+  const param = {
+    async getValueAtTime() { return state.levelUnity; },
+    createKeyframe(value) { return { value, position: null }; },
+    createSetTimeVaryingAction() { return () => { item.timeVarying = true; }; },
+    createAddKeyframeAction(keyframe) {
+      return () => {
+        item.keyframes = item.keyframes ?? [];
+        item.keyframes.push({ atSec: keyframe.position.sec, value: keyframe.value });
+      };
+    },
+  };
+  const volume = {
+    async getMatchName() { return state.volumeMatchName; },
+    async getDisplayName() { return "Volume"; },
+    getParamCount() { return 2; },
+    // Param 0 is Bypass (boolean) — the code must skip it and take param 1.
+    getParam(i) { return i === 0 ? { async getValueAtTime() { return false; } } : param; },
+  };
+  const other = {
+    async getMatchName() { return "AE.ADBE Audio Panner"; },
+    async getDisplayName() { return "Panner"; },
+    getParamCount() { return 1; },
+    getParam() { return { async getValueAtTime() { return 0.5; } }; },
+  };
+  return {
+    _raw: item,
+    async getStartTime() { return { seconds: item.at }; },
+    async getEndTime() { return { seconds: item.at + item.durationSec }; },
+    async getComponentChain() {
+      const parts = state.volumeMatchName === null ? [other] : [other, volume];
+      return {
+        getComponentCount() { return parts.length; },
+        getComponentAtIndex(i) { return parts[i]; },
+      };
+    },
+  };
+}
+
 function makeApi(state) {
   const seqApi = (seq) => ({
     async getVideoTrackCount() { return seq.videoTracks.length; },
@@ -63,7 +111,12 @@ function makeApi(state) {
     async getAudioTrack(i) {
       if (i >= seq.audioTracks.length) return null;
       const born = state.generation;
-      return { async getTrackItems() { checkAlive(state, born); return seq.audioTracks[i].slice(); } };
+      return {
+        async getTrackItems() {
+          checkAlive(state, born);
+          return seq.audioTracks[i].map((item) => audioItemApi(state, item));
+        },
+      };
     },
     _raw: seq,
   });
@@ -78,6 +131,7 @@ function makeApi(state) {
         for (let c = 0; c < seq.audioChannelsPerClip; c++) {
           track(seq.audioTracks, audioTrackIndex + c).push({
             id: nextId++, mediaType: MediaType.AUDIO, name: projectItem.name, at: time.sec,
+            durationSec: (projectItem.outSec ?? 2) - (projectItem.inSec ?? 0),
           });
         }
       };
@@ -85,7 +139,10 @@ function makeApi(state) {
     createRemoveItemsAction(selection, _ripple, mediaType) {
       return () => {
         const ids = new Set(
-          selection._items.filter((i) => i.mediaType === mediaType).map((i) => i.id),
+          selection._items
+            .map((i) => i._raw ?? i)
+            .filter((i) => i.mediaType === mediaType)
+            .map((i) => i.id),
         );
         for (const list of [seq.videoTracks, seq.audioTracks]) {
           for (let i = 0; i < list.length; i++) {
@@ -173,8 +230,18 @@ function loadBuildSequence(ppro) {
 
 const failures = [];
 
-async function run({ label, plan, audioChannels, expectAudioTracks, strict, verbose }) {
-  const state = { audioChannelsPerClip: audioChannels, sequence: null, generation: 0, strict };
+async function run({
+  label, plan, audioChannels, expectAudioTracks, strict, verbose,
+  levelUnity = 0, volumeMatchName = "AE.ADBE Audio Levels", expectFades = true,
+}) {
+  const state = {
+    audioChannelsPerClip: audioChannels,
+    sequence: null,
+    generation: 0,
+    strict,
+    levelUnity,
+    volumeMatchName,
+  };
   const ppro = makeApi(state);
   state.project = makeProject(state, ppro);
 
@@ -195,6 +262,7 @@ async function run({ label, plan, audioChannels, expectAudioTracks, strict, verb
 
   const name = `${label} · ${audioChannels}-channel · ${strict ? "strict" : "lax"} lifetimes`;
   let problem = null;
+  let fadeNote = "fades not reached";
   try {
     assert.strictEqual(strayVideo, 0, `${strayVideo} parked picture item(s) left above V1`);
     assert.deepStrictEqual(
@@ -202,12 +270,44 @@ async function run({ label, plan, audioChannels, expectAudioTracks, strict, verb
       `audio on ${JSON.stringify(occupiedAudio)}, expected ${JSON.stringify(expectAudioTracks)}`,
     );
     assert.ok(video[0] > 0, "V1 is empty");
+
+    // Every surviving audio clip long enough to take a ramp should carry one:
+    // four keyframes, quiet-full-full-quiet, in the clip's own time domain.
+    const fadeable = seq.audioTracks.flat().filter((i) => (i.durationSec ?? 0) >= 0.2);
+    const faded = fadeable.filter((i) => (i.keyframes ?? []).length > 0);
+    assert.ok(fadeable.length > 0, "no audio clip was long enough to fade — check the fixture");
+
+    if (expectFades) {
+      assert.strictEqual(
+        faded.length, fadeable.length,
+        `${fadeable.length - faded.length} of ${fadeable.length} audio clip(s) got no fade`,
+      );
+      for (const item of faded) {
+        const kf = item.keyframes;
+        assert.strictEqual(kf.length, 4, `expected 4 keyframes, got ${kf.length}`);
+        assert.strictEqual(kf[0].atSec, 0, "ramp must start at the clip's own start");
+        assert.ok(
+          Math.abs(kf[3].atSec - item.durationSec) < 1e-9,
+          `ramp must end at the clip's end (${kf[3].atSec} vs ${item.durationSec})`,
+        );
+        assert.ok(kf[0].value < kf[1].value, "must rise into the clip");
+        assert.ok(kf[3].value < kf[2].value, "must fall out of the clip");
+        assert.strictEqual(kf[1].value, kf[2].value, "must hold unity in between");
+        assert.strictEqual(item.timeVarying, true, "param must be set time-varying");
+      }
+    } else {
+      assert.strictEqual(
+        faded.length, 0,
+        `expected no fades, but ${faded.length} clip(s) were written to`,
+      );
+    }
+    fadeNote = expectFades ? `${faded.length} faded` : "no fades (as expected)";
   } catch (err) {
     problem = err.message;
     failures.push(`${name}: ${problem}`);
   }
 
-  console.log(`${problem ? "FAIL" : "ok  "}  ${name}`);
+  console.log(`${problem ? "FAIL" : "ok  "}  ${name} · ${fadeNote}`);
   if (problem) console.log(`        ${problem}`);
   if (verbose || problem) {
     for (const l of lines) console.log(`        | ${l}`);
@@ -276,6 +376,24 @@ const verbose = process.argv.includes("--verbose");
       await run({ label: "legacy B-roll path", plan: broll, audioChannels, expectAudioTracks: spineOnly(audioChannels), strict, verbose });
     }
   }
+
+  // The scale and the refusals. Writing a ramp in the wrong units would
+  // silence the cut, so "declines to act" is the required behaviour here, not
+  // a missing feature.
+  await run({
+    label: "fades · normalised scale (unity reads 1)", plan: twoLayer, audioChannels: 2,
+    expectAudioTracks: spineOnly(2), strict: true, verbose, levelUnity: 1,
+  });
+  await run({
+    label: "fades · refuses an unrecognised scale", plan: twoLayer, audioChannels: 2,
+    expectAudioTracks: spineOnly(2), strict: true, verbose,
+    levelUnity: 7.5, expectFades: false,
+  });
+  await run({
+    label: "fades · refuses when there is no volume component", plan: twoLayer, audioChannels: 2,
+    expectAudioTracks: spineOnly(2), strict: true, verbose,
+    volumeMatchName: null, expectFades: false,
+  });
 
   console.log("");
   if (failures.length > 0) {
