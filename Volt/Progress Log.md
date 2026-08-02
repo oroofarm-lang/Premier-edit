@@ -11,6 +11,20 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-08-03 — First real Premiere run of the audio ramps: one win, one miss
+
+The user built the sequence and pasted the panel log. Two results, and the bigger one is the quiet one.
+
+**Park-and-sweep is confirmed working in real Premiere.** `Removed 21 parked item(s) from 2 unused track(s)` … `Final layout — V1: 14 clip(s) · A1: 7 clip(s)`. One picture track, one soundtrack, nothing left behind. Unlink-by-hand — the thing there is no UXP command for — works. The simulator could only ever answer that for bookkeeping; this is the real answer, and it closes the complaint that started this whole thread.
+
+**The volume probe found the component and could not read it.** The chain on a plain audio clip turns out to be exactly two fixed effects: `0: Volume / Internal Volume Stereo` and `1: Channel Volume / Internal Channel Volume Stereo`. So the search and the match were right — the *value check* was too strict. It demanded a bare `typeof === "number"`, and `Keyframe.value` is documented as `{ value: … }`, so a param's current value is very likely wrapped the same way. `asNumber` now unwraps one or two levels and reads through `getValueAtTime` then `getStartValue`.
+
+**The design change that matters more than the fix:** every miss here costs the user a real build in Premiere. So a second failure now has to *end* the investigation rather than extend it — the probe logs the param count per component and the shape of what every read returned, and prints all of it when discovery fails. Cheap logging is worth a lot when each round trip is a human doing a build.
+
+Verified discriminating, with the anchor asserted this time (see yesterday's entry for why that clause is there): restoring the old strict check fails exactly the two new wrapped-shape scenarios and nothing else. 24 sim scenarios, 160 unit tests.
+
+Still unsettled: keyframe positions are written clip-relative, and that assumption has not been exercised yet, because the code never got as far as writing one.
+
 ## 2026-08-02 — Audio joins that ramp instead of clicking, and a green run that meant nothing
 
 Closed the long-pending audio-smoothing task (#33) — the user's *"האודיו קצת לא הכי רך"*. The panel was making 6 hard cuts with no treatment at all, while the FCP7 export path had a real 0.15s crossfade the whole time.

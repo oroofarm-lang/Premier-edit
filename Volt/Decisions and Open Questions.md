@@ -79,6 +79,12 @@ Part of [[Premier Edit]]. Living log — update as questions get resolved instea
 > [!success] A shot is trimmed from its lead-in, not its ending (2026-08-02)
 > The catalogue grades a window on how it **ends**; the trim was keeping its **head**, discarding the property the shot was chosen for. On real footage, 11 shots graded ≥0.80 on `movementCompleteness` lost 16.5s of their own endings and only 1 of them reached its resolution. Now a completing shot is anchored to the end of its window. **The wider rule: when something reads badly on screen, check whether the signal that was measured survives all the way to the frames that actually land in the sequence** — here it shaped the hold length and was ignored by the trim.
 
+> [!success] Unlink-by-hand is confirmed in real Premiere (2026-08-03)
+> The park-the-unwanted-half-and-sweep approach — the panel doing manually what there is no UXP Unlink command for — produced a clean `V1: 14 · A1: 7` on a real build, with all 21 parked items removed. This was the defect that made the output unusable, and it is closed. Also learned there: a plain audio clip's component chain is exactly two fixed effects, `Volume / Internal Volume Stereo` and `Channel Volume / Internal Channel Volume Stereo`.
+
+> [!warning] When each attempt costs a human a build, log like it (2026-08-03)
+> The audio-ramp probe found the right component and failed to read its value, and the log said only "no volume parameter found" — true, useless, and it cost a full round trip through the user's Premiere to learn nothing more. The probe now reports the param count per component and the *shape* of what every read returned. **For anything that can only be exercised by the user performing a real action, one failed run must carry enough to fix it without a second.** Cheap logging is worth a great deal when the feedback loop is a person.
+
 > [!success] The panel ramps audio; it still cannot crossfade (2026-08-02)
 > UXP has no audio transition API and there is no sign of one coming. The panel now writes a 40ms volume ramp at each end of every audio clip via keyframes, which stops butt-joins clicking — **the FCP7 XML path remains the only route to a true crossfade.** Where the API refused to document itself (which component is the volume, which param is the level, what units it uses) the code discovers at runtime and **skips rather than guesses**, because a ramp in the wrong units silences the cut. One assumption is still unverified: keyframe positions are written clip-relative.
 
