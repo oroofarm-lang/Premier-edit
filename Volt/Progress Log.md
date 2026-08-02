@@ -11,6 +11,20 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-08-02 — Audio joins that ramp instead of clicking, and a green run that meant nothing
+
+Closed the long-pending audio-smoothing task (#33) — the user's *"האודיו קצת לא הכי רך"*. The panel was making 6 hard cuts with no treatment at all, while the FCP7 export path had a real 0.15s crossfade the whole time.
+
+**UXP still has no audio transition API**, re-confirmed against the whole `.d.ts`. So the panel does the other thing a human would: a **40ms volume ramp at each end of every audio clip**, through `getComponentChain` → `getParam` → `createSetTimeVaryingAction` + `createAddKeyframeAction`. It kills the discontinuity that makes a butt-join click. It is not a crossfade, and it should not be — anything longer would audibly duck the speech at every join.
+
+**The interesting part is what the API refuses to tell you.** Neither the type definitions nor Adobe's published reference say which component in the chain is the volume, which of its params is the level, or what units that level uses. All three are now **discovered at runtime** rather than assumed: components matched on their own reported names (and all of them logged), the level taken as the first numeric param, and the scale inferred from the value an untouched clip already carries — unity reads 0 in decibels and ~1 normalised. **An unrecognised scale is a skip with a logged reason, never a guess**, because a ramp written in the wrong units would silence the cut, which is far worse than leaving the joins hard.
+
+One assumption survives that only a real Premiere run can settle: keyframe positions are written **clip-relative**. `AudioClipTrackItem` offers both a sequence-relative and a source-relative time and nothing says which domain keyframes live in. Both are logged per clip, so one run diagnoses it.
+
+**And then the part worth actually remembering.** The simulator reported all 21 scenarios green — and disabling the entire feature changed nothing, because my fade assertions had never been added: a find-and-replace pattern matched nothing, silently. A second patch had failed the same way, leaving the simulator's audio fixture inert, which is why smoothing was skipping in every scenario. **Nothing errored. Nothing warned. The suite passed for the most boring possible reason.** This is the third false green in one session, and the first one I caused rather than inherited — while building the agent whose entire purpose is catching this.
+
+Fixed and re-verified properly: disabling `smoothAudioJoins` now fails **19 of 21** scenarios, and the two that stay green are exactly the ones asserting it *declines* to act; making the scale inference guess instead of refusing fails precisely the unrecognised-scale scenario. The rule that came out of it, now in [[Decisions and Open Questions]] and in the `red-first` agent: **assert that an automated edit changed the text before believing the run that follows it.**
+
 ## 2026-08-02 — Letting the picture follow what is being said
 
 The user named the real product problem, and it is not a bug: *"אנחנו חייבים לעבור את המחסום הזה שיש לנו גם תוכן של אודיו וגם ויזואל וצריך לגרום להכל לעבוד יחד טוב."* Sound and picture are planned independently — the spine from the transcript, the picture from ffmpeg metrics — and nothing makes them agree.

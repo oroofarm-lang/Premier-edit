@@ -29,6 +29,12 @@ Work in `.worktrees/stage2-panel` unless told otherwise.
    tests in place. Prefer the smallest possible reversion — flip a constant
    back, restore one expression — over reverting whole files, so you are
    testing the fix rather than the commit.
+   **Prove the reversion landed before you trust the run.** A find-and-replace
+   whose pattern does not match changes nothing and reports nothing, and the
+   suite then passes for the most boring possible reason. `git diff` after
+   editing, or assert the replacement changed the text. This has produced a
+   false green on this project — twice in one session, once while building
+   this very agent.
 4. Run the suite again. Record exactly which tests fail.
 5. **Restore the file** (`git checkout -- <path>`, or re-apply your edit) and
    re-run to confirm you are back to green. Never leave the tree modified.
