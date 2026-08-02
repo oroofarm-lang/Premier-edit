@@ -59,10 +59,30 @@ function track(list, index) {
  * `state.levelUnity` chooses what an untouched clip reads — 0 for decibels,
  * 1 for a normalised scale, or something else entirely to check that the code
  * refuses to guess.
+ *
+ * `state.valueShape` chooses how that value comes back. A real Premiere run
+ * found the Volume component and no plain number on any of its params, and
+ * `Keyframe.value` is documented as `{ value: … }` — so "bare" is the
+ * optimistic case and the wrapped ones are what the API may actually do.
+ * "none" makes the param unreadable entirely, to check the refusal.
  */
+function wrapValue(shape, value) {
+  if (shape === "wrapped") return { value };
+  if (shape === "double-wrapped") return { value: { value } };
+  return value;
+}
+
 function audioItemApi(state, item) {
   const param = {
-    async getValueAtTime() { return state.levelUnity; },
+    async getValueAtTime() {
+      if (state.valueShape === "none") return undefined;
+      return wrapValue(state.valueShape, state.levelUnity);
+    },
+    // Documented as returning a Keyframe, whose `value` is itself a wrapper.
+    async getStartValue() {
+      if (state.valueShape === "none") return undefined;
+      return { value: wrapValue(state.valueShape, state.levelUnity) };
+    },
     createKeyframe(value) { return { value, position: null }; },
     createSetTimeVaryingAction() { return () => { item.timeVarying = true; }; },
     createAddKeyframeAction(keyframe) {
@@ -77,13 +97,19 @@ function audioItemApi(state, item) {
     async getDisplayName() { return "Volume"; },
     getParamCount() { return 2; },
     // Param 0 is Bypass (boolean) — the code must skip it and take param 1.
-    getParam(i) { return i === 0 ? { async getValueAtTime() { return false; } } : param; },
+    getParam(i) {
+      return i === 0
+        ? { async getValueAtTime() { return false; }, async getStartValue() { return { value: false }; } }
+        : param;
+    },
   };
   const other = {
     async getMatchName() { return "AE.ADBE Audio Panner"; },
     async getDisplayName() { return "Panner"; },
     getParamCount() { return 1; },
-    getParam() { return { async getValueAtTime() { return 0.5; } }; },
+    getParam() {
+      return { async getValueAtTime() { return 0.5; }, async getStartValue() { return { value: 0.5 }; } };
+    },
   };
   return {
     _raw: item,
@@ -233,6 +259,7 @@ const failures = [];
 async function run({
   label, plan, audioChannels, expectAudioTracks, strict, verbose,
   levelUnity = 0, volumeMatchName = "AE.ADBE Audio Levels", expectFades = true,
+  valueShape = "bare",
 }) {
   const state = {
     audioChannelsPerClip: audioChannels,
@@ -241,6 +268,7 @@ async function run({
     strict,
     levelUnity,
     volumeMatchName,
+    valueShape,
   };
   const ppro = makeApi(state);
   state.project = makeProject(state, ppro);
@@ -393,6 +421,21 @@ const verbose = process.argv.includes("--verbose");
     label: "fades · refuses when there is no volume component", plan: twoLayer, audioChannels: 2,
     expectAudioTracks: spineOnly(2), strict: true, verbose,
     volumeMatchName: null, expectFades: false,
+  });
+
+  // How the level actually comes back. A real Premiere run found the Volume
+  // component and no bare number on it, and Keyframe.value is documented as a
+  // wrapper — so the wrapped shapes are the ones that matter, not "bare".
+  for (const valueShape of ["wrapped", "double-wrapped"]) {
+    await run({
+      label: `fades · level arrives ${valueShape}`, plan: twoLayer, audioChannels: 2,
+      expectAudioTracks: spineOnly(2), strict: true, verbose, valueShape,
+    });
+  }
+  await run({
+    label: "fades · refuses an unreadable level", plan: twoLayer, audioChannels: 2,
+    expectAudioTracks: spineOnly(2), strict: true, verbose,
+    valueShape: "none", expectFades: false,
   });
 
   console.log("");

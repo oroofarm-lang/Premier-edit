@@ -360,30 +360,104 @@ async function reportLayout(project, keptAudio, log) {
  * guess at a UXP signature and twice been wrong, so the first real run in
  * Premiere is meant to *tell* us the shape rather than merely succeed or fail.
  */
+/**
+ * Pulls a number out of whatever shape a param hands back.
+ *
+ * A first real run in Premiere found `Volume / Internal Volume Stereo` and
+ * then no plain number on any of its params, so a bare `typeof === "number"`
+ * is too strict. `Keyframe.value` is documented as `{ value: … }` — a wrapper
+ * — so a param's current value is read through the same one, and the nesting
+ * is tried to a depth of two rather than assumed.
+ */
+function asNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value && typeof value === "object") {
+    if (typeof value.value === "number" && Number.isFinite(value.value)) return value.value;
+    if (value.value && typeof value.value === "object") {
+      const inner = value.value.value;
+      if (typeof inner === "number" && Number.isFinite(inner)) return inner;
+    }
+  }
+  return null;
+}
+
+/** Enough of a value's shape to identify it in a log, without dumping it. */
+function shapeOf(value) {
+  if (value === null || value === undefined) return String(value);
+  if (typeof value !== "object") return `${typeof value}=${value}`;
+  return `object{${Object.keys(value).join("|")}}`;
+}
+
+/**
+ * Reads a param's current value, trying each documented route and reporting
+ * what every one of them returned.
+ *
+ * The reporting is the point. One round trip through the user's Premiere
+ * already cost a build; if this still finds nothing, the log must be enough
+ * to fix it without another.
+ */
+async function readParamNumber(param) {
+  const tried = [];
+
+  try {
+    const raw = await param.getValueAtTime(ppro.TickTime.createWithSeconds(0));
+    tried.push(`getValueAtTime→${shapeOf(raw)}`);
+    const n = asNumber(raw);
+    if (n !== null) return { value: n, tried };
+  } catch (err) {
+    tried.push(`getValueAtTime threw(${err.message})`);
+  }
+
+  try {
+    const keyframe = await param.getStartValue();
+    tried.push(`getStartValue→${shapeOf(keyframe && keyframe.value)}`);
+    const n = asNumber(keyframe && keyframe.value);
+    if (n !== null) return { value: n, tried };
+  } catch (err) {
+    tried.push(`getStartValue threw(${err.message})`);
+  }
+
+  return { value: null, tried };
+}
+
 async function findLevelParam(audioItem) {
   const chain = await audioItem.getComponentChain();
   const count = chain.getComponentCount();
   const seen = [];
+  const probes = [];
 
   for (let i = 0; i < count; i++) {
     const component = chain.getComponentAtIndex(i);
     const matchName = await component.getMatchName();
     const displayName = await component.getDisplayName();
-    seen.push(`${i}:${displayName || "?"}/${matchName || "?"}`);
+
+    let paramCount = 0;
+    try {
+      paramCount = component.getParamCount();
+    } catch (err) {
+      paramCount = -1;
+    }
+    seen.push(`${i}:${displayName || "?"}/${matchName || "?"} (${paramCount} params)`);
 
     const isVolume = /volume|level/i.test(`${matchName} ${displayName}`);
-    if (!isVolume) continue;
+    if (!isVolume || paramCount <= 0) continue;
 
-    const paramCount = component.getParamCount();
     for (let p = 0; p < paramCount; p++) {
-      const param = component.getParam(p);
-      const value = await param.getValueAtTime(ppro.TickTime.createWithSeconds(0));
-      if (typeof value === "number") {
-        return { componentIndex: i, paramIndex: p, value, label: `${displayName}[${p}]`, seen };
+      let param;
+      try {
+        param = component.getParam(p);
+      } catch (err) {
+        probes.push(`${i}.${p} getParam threw(${err.message})`);
+        continue;
+      }
+      const { value, tried } = await readParamNumber(param);
+      probes.push(`${i}.${p} ${tried.join(", ")}`);
+      if (value !== null) {
+        return { componentIndex: i, paramIndex: p, value, label: `${displayName}[${p}]`, seen, probes };
       }
     }
   }
-  return { componentIndex: -1, paramIndex: -1, value: null, label: null, seen };
+  return { componentIndex: -1, paramIndex: -1, value: null, label: null, seen, probes };
 }
 
 /**
@@ -438,7 +512,11 @@ async function smoothAudioJoins(project, keptAudio, log) {
           const found = await findLevelParam(item);
           log(`Audio chain on A${trackIndex + 1}: ${found.seen.join(", ") || "(empty)"}`);
           if (found.paramIndex < 0) {
-            log("No volume parameter found — leaving the audio joins as hard cuts.");
+            // Print what every param actually returned. Each miss here costs
+            // the user a real build in Premiere, so one failed run has to
+            // carry enough to fix it without a second.
+            for (const probe of found.probes) log(`  probe ${probe}`);
+            log("No readable volume level — leaving the audio joins as hard cuts.");
             return;
           }
           scale = levelScale(found.value);
