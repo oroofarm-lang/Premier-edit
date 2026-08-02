@@ -19,15 +19,43 @@ import {
  * Everything it needs is already measured for free by `lib/shots/`: quality,
  * activity, movement completeness, source file and source times.
  *
- * **What it cannot do**, stated plainly rather than discovered later: it has
- * no idea what is *in* a shot. It cannot put the pour under the words about
- * pouring, because it cannot read either. It produces a varied, well-shot,
- * gapless picture layer that respects the craft rules — not one that means
- * anything. Content matching is exactly what the model call buys.
+ * **What it cannot do**, stated plainly rather than discovered later: it
+ * cannot read, so it has no idea what a shot *depicts*. Semantic matching —
+ * "these words are about the garden, show the garden" — is what the model
+ * call buys.
+ *
+ * **What it can do, and now does**, is cheaper and was sitting unused: sync.
+ * `isSyncFor` marks a shot drawn from the same clip, at the same source
+ * time, as the spine moment currently being heard. That is not understanding,
+ * but it is a real link between sound and picture — if the speaker was
+ * pouring while saying this sentence, the footage of that pour is exactly the
+ * shot flagged for it. The planner prefers those, without insisting: a run of
+ * pure sync is just the untouched original take, which is not an edit.
  */
 
 /** How much a source file's score decays per placement already taken from it. */
 const REUSE_PENALTY = 0.12;
+
+/**
+ * How much a shot gains for being in sync with the words playing over it.
+ *
+ * Unlike the timing constants below, this one is a judgement rather than a
+ * measurement, so it is sized against the two forces it competes with. At
+ * 0.20 it outweighs a couple of reuses (0.12 each) and beats a rival of
+ * modestly better technical quality — but a genuinely better shot, a third
+ * of the quality range ahead, still wins. Sync is a reason to prefer a shot,
+ * not a reason to accept a bad one.
+ */
+const SYNC_BONUS = 0.2;
+
+/**
+ * How many placements in a row may be in sync before the bonus is withheld.
+ *
+ * Without this the planner drifts toward simply replaying the original take
+ * under its own audio, which is not an edit — it is the rushes. Two in a row
+ * reads as "we are with the speaker"; three starts to read as no decision.
+ */
+const MAX_SYNC_RUN = 2;
 
 /** Matches the same rule the validator enforces on consecutive same-file spans. */
 const SAME_FILE_ANGLE_GAP_SEC = 2;
@@ -79,6 +107,22 @@ function spineBoundaries(spine: SpineMoment[]): number[] {
     points.add(round(moment.timelineEndSec));
   }
   return [...points].sort((a, b) => a - b);
+}
+
+/**
+ * Which spine moment is being heard at this point on the timeline.
+ *
+ * The picture layer has its own boundaries, so a placement rarely lines up
+ * with a moment — what matters is which words are playing when the shot
+ * appears, which is decided at its start.
+ */
+function momentAt(spine: SpineMoment[], timeSec: number): SpineMoment | null {
+  for (const moment of spine) {
+    if (timeSec >= moment.timelineStartSec - EPSILON && timeSec < moment.timelineEndSec) {
+      return moment;
+    }
+  }
+  return null;
 }
 
 /** How long this shot deserves to be held, relative to the nominal span. */
@@ -154,6 +198,7 @@ export function planLayoutHeuristically(
   const placements: LayoutPlacement[] = [];
   let cursor = 0;
   let previous: ShotCandidate | null = null;
+  let syncRun = 0;
 
   while (cursor < totalSec - EPSILON) {
     const remaining = totalSec - cursor;
@@ -172,7 +217,13 @@ export function planLayoutHeuristically(
     // Absorb a final sliver rather than leaving a placement too short to read.
     const want = remaining < baseSpan * 1.5 ? remaining : baseSpan;
 
-    const pick = choose(candidates, used, usesByFile, previous, want, remaining);
+    // Which words play as this shot appears — and therefore which shots would
+    // be in sync with them. Withheld once a run of sync placements gets long
+    // enough to read as the untouched take rather than a decision.
+    const heardOrder = momentAt(spine, cursor)?.order ?? null;
+    const syncOrder = syncRun >= MAX_SYNC_RUN ? null : heardOrder;
+
+    const pick = choose(candidates, used, usesByFile, previous, want, remaining, syncOrder);
     if (pick === null) break;
 
     const shot = candidates[pick];
@@ -189,11 +240,16 @@ export function planLayoutHeuristically(
       timelineStartSec: round(cursor),
       timelineEndSec: round(cursor + span),
       useSourceAudio: false,
-      reason: describe(shot),
+      reason: describe(shot, heardOrder !== null && shot.isSyncFor.includes(heardOrder)),
     });
 
     used.add(pick);
     usesByFile.set(shot.fileName, (usesByFile.get(shot.fileName) ?? 0) + 1);
+    // Counted against what is actually heard, not against the withheld
+    // bonus — otherwise suppressing the bonus would reset the run it exists
+    // to break, and sync placements would alternate forever.
+    syncRun =
+      heardOrder !== null && shot.isSyncFor.includes(heardOrder) ? syncRun + 1 : 0;
     previous = shot;
     cursor += span;
   }
@@ -229,6 +285,7 @@ function choose(
   previous: ShotCandidate | null,
   want: number,
   remaining: number,
+  syncOrder: number | null,
 ): number | null {
   // Constraints relax in order of how much each defect costs: a slightly
   // short shot is cheap, a repeated angle is worse. Reuse is deliberately not
@@ -250,7 +307,9 @@ function choose(
       if (!pass.allowJumpCut && previous && isJumpCut(previous, shot)) continue;
 
       const reuse = usesByFile.get(shot.fileName) ?? 0;
-      const score = shot.qualityScore - reuse * REUSE_PENALTY;
+      const inSync = syncOrder !== null && shot.isSyncFor.includes(syncOrder);
+      const score =
+        shot.qualityScore - reuse * REUSE_PENALTY + (inSync ? SYNC_BONUS : 0);
       if (score > bestScore) {
         bestScore = score;
         best = i;
@@ -261,9 +320,17 @@ function choose(
   return null;
 }
 
-function describe(shot: ShotCandidate): string {
-  if (shot.description) return shot.description.slice(0, 60);
+function describe(shot: ShotCandidate, inSync: boolean): string {
+  // Sync is a fact about this placement rather than about the shot, and it is
+  // the one thing the user cannot see from the file name and times — so it is
+  // said even when a vision description exists to say something richer.
+  const sync = inSync ? "בסנכרון עם הדיבור" : null;
+  if (shot.description) {
+    const head = shot.description.slice(0, 60);
+    return sync ? `${sync} — ${head}` : head;
+  }
   const traits: string[] = [];
+  if (sync) traits.push(sync);
   if (shot.activity >= 0.6) traits.push("פעולה");
   if (shot.movementCompleteness >= 0.8) traits.push("תנועה שלמה");
   if (traits.length === 0) traits.push("שוט יציב");

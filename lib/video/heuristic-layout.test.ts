@@ -165,3 +165,87 @@ describe("planLayoutHeuristically — cut placement craft", () => {
     expect(validateLayout(plan, thin, 20)).toEqual({ ok: true });
   });
 });
+
+describe("planLayoutHeuristically — sync between what is heard and what is seen", () => {
+  /**
+   * A catalogue where the shots flagged as in sync are deliberately the
+   * WORST-scoring ones. If sync never mattered, none of them would ever be
+   * picked — so any sync placement here is the bonus doing work, not a
+   * coincidence of quality ranking.
+   */
+  function catalogueWithSync(): ShotCandidate[] {
+    const shots = catalogue();
+    for (const shot of shots) {
+      if (shot.fileName === "A.MP4") {
+        shot.isSyncFor = [0];
+        shot.qualityScore = 0.55;
+      } else if (shot.fileName === "B.MP4") {
+        shot.isSyncFor = [1];
+        shot.qualityScore = 0.55;
+      }
+    }
+    return shots;
+  }
+
+  function syncCount(
+    plan: { placements: { index: number; timelineStartSec: number }[] },
+    shots: ShotCandidate[],
+  ): number {
+    return plan.placements.filter((p) => {
+      const moment = spine.find(
+        (m) => p.timelineStartSec >= m.timelineStartSec && p.timelineStartSec < m.timelineEndSec,
+      );
+      return moment !== undefined && shots[p.index].isSyncFor.includes(moment.order);
+    }).length;
+  }
+
+  it("shows footage from the clip being heard, even when it scores lower", () => {
+    const shots = catalogueWithSync();
+    const plan = planLayoutHeuristically(spine, shots, "SOCIAL_POST");
+    expect(syncCount(plan, shots)).toBeGreaterThan(0);
+  });
+
+  it("does not simply replay the take: never more than two sync shots in a row", () => {
+    const shots = catalogueWithSync();
+    const plan = planLayoutHeuristically(spine, shots, "SOCIAL_POST");
+
+    let run = 0;
+    let longest = 0;
+    for (const p of plan.placements) {
+      const moment = spine.find(
+        (m) => p.timelineStartSec >= m.timelineStartSec && p.timelineStartSec < m.timelineEndSec,
+      );
+      const inSync = moment !== undefined && shots[p.index].isSyncFor.includes(moment.order);
+      run = inSync ? run + 1 : 0;
+      longest = Math.max(longest, run);
+    }
+    expect(longest).toBeLessThanOrEqual(2);
+  });
+
+  it("refuses a sync shot that is genuinely much worse", () => {
+    const shots = catalogue();
+    for (const shot of shots) {
+      if (shot.fileName === "A.MP4") {
+        shot.isSyncFor = [0];
+        shot.qualityScore = 0.1; // far below the 0.2 bonus can rescue
+      }
+    }
+    const plan = planLayoutHeuristically(spine, shots, "SOCIAL_POST");
+    const first = shots[plan.placements[0].index];
+    expect(first.fileName).not.toBe("A.MP4");
+  });
+
+  it("still covers the spine and passes the validator with sync in play", () => {
+    const shots = catalogueWithSync();
+    const plan = planLayoutHeuristically(spine, shots, "SOCIAL_POST");
+    expect(validateLayout(plan, shots, 20)).toEqual({ ok: true });
+    expect(plan.placements[0].timelineStartSec).toBe(0);
+    expect(plan.placements.at(-1)!.timelineEndSec).toBe(20);
+  });
+
+  it("says so in the reason, so the user can see why a shot was used", () => {
+    const shots = catalogueWithSync();
+    const plan = planLayoutHeuristically(spine, shots, "SOCIAL_POST");
+    expect(plan.placements.some((p) => p.reason.includes("בסנכרון עם הדיבור"))).toBe(true);
+  });
+});

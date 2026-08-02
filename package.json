@@ -13,7 +13,8 @@
     "panel:preview": "node scripts/build-panel-harness.mjs",
     "craft:preview": "tsx scripts/craft-preview.ts",
     "panel:sim": "node premiere-panel/_sim.js",
-    "measure:trim": "tsx scripts/measure-trim.ts"
+    "measure:trim": "tsx scripts/measure-trim.ts",
+    "coherence": "tsx scripts/coherence.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

@@ -36,8 +36,14 @@ const MAX_RESPONSE_TOKENS = 32000;
 const MAX_DESCRIBED_SHOTS = 40;
 
 export type VideoLayoutSummary = {
-  /** Which planner produced the layout — "heuristic" when no API key is set. */
+  /**
+   * Which planner produced the layout. "heuristic" when no API key is set —
+   * and also when the model was tried and failed, in which case
+   * `fellBackReason` says why rather than letting a downgrade pass silently.
+   */
   planner: "llm" | "heuristic";
+  /** Null unless the model was attempted and the free planner took over. */
+  fellBackReason: string | null;
   spineMoments: number;
   spineDurationSec: number;
   shotsConsidered: number;
@@ -140,6 +146,8 @@ export async function runVideoLayout(
   // No key means the free planner, not a dead stage — the same
   // auto-downgrade `resolveDefaultSelector` already does for selection, so
   // the whole pipeline still runs end to end without an Anthropic account.
+  // A key that cannot be billed lands in the same place, but only after the
+  // call fails; see the try/catch around the model path below.
   const useLlm = Boolean(process.env.ANTHROPIC_API_KEY);
   if (inFlight.has(projectId)) {
     throw new Error("Video layout is already running for this project.");
@@ -227,7 +235,9 @@ export async function runVideoLayout(
       };
     });
 
-    let plan: { placements: LayoutPlacement[] };
+    let plan: { placements: LayoutPlacement[] } | null = null;
+    /** Set when the model was tried and could not deliver, for the summary. */
+    let fellBackReason: string | null = null;
 
     if (useLlm) {
       const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -257,23 +267,35 @@ export async function runVideoLayout(
         return parseLayoutPlan(block.text);
       }
 
-      plan = await requestLayout(basePrompt);
-      let validation = validateLayout(plan, candidates, totalSec);
-      if (!validation.ok) {
-        // One retry carrying the rejection reason — the same shape the
-        // selection stage already uses, and the same reason: a near-miss on
-        // coverage arithmetic is usually fixable by saying what was wrong.
-        plan = await requestLayout(
-          `${basePrompt}\n\nהניסיון הקודם נדחה: ${validation.reason}\nתקן ונסה שוב.`,
-        );
-        validation = validateLayout(plan, candidates, totalSec);
+      // A key that exists but cannot be billed is not the same state as no
+      // key, and the difference used to kill the stage: "credit balance is
+      // too low" surfaced as a failed run rather than falling back. Having a
+      // free path only helps if reaching it does not require predicting the
+      // failure in advance, so the fallback is on the error, not on config.
+      try {
+        plan = await requestLayout(basePrompt);
+        let validation = validateLayout(plan, candidates, totalSec);
         if (!validation.ok) {
-          throw new Error(
-            `Video layout failed validation twice: ${validation.reason}`,
+          // One retry carrying the rejection reason — the same shape the
+          // selection stage already uses, and the same reason: a near-miss on
+          // coverage arithmetic is usually fixable by saying what was wrong.
+          plan = await requestLayout(
+            `${basePrompt}\n\nהניסיון הקודם נדחה: ${validation.reason}\nתקן ונסה שוב.`,
           );
+          validation = validateLayout(plan, candidates, totalSec);
+          if (!validation.ok) {
+            throw new Error(
+              `Video layout failed validation twice: ${validation.reason}`,
+            );
+          }
         }
+      } catch (err) {
+        plan = null;
+        fellBackReason = err instanceof Error ? err.message : String(err);
       }
-    } else {
+    }
+
+    if (plan === null) {
       plan = planLayoutHeuristically(spine, candidates, project.outputProfile);
       const validation = validateLayout(plan, candidates, totalSec);
       if (!validation.ok) {
@@ -306,7 +328,8 @@ export async function runVideoLayout(
     ]);
 
     return {
-      planner: useLlm ? "llm" : "heuristic",
+      planner: useLlm && fellBackReason === null ? "llm" : "heuristic",
+      fellBackReason,
       spineMoments: spine.length,
       spineDurationSec: Math.round(totalSec * 10) / 10,
       shotsConsidered: candidates.length,
