@@ -11,6 +11,16 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-08-02 — Installed a third-party orchestration skill, and stripped the ad out of it
+
+Environment change rather than project code — nothing here lives in this repo, which is exactly why it needs writing down.
+
+- **Installed `work-foreman`** (Shalhevet Vardi / Aimprove, MIT) globally to `~/.claude/skills/work-foreman/`, with its three sub-agents in `~/.claude/agents/` (`foreman-worker`, `foreman-verifier`, `foreman-scout`). A Hebrew orchestration skill: strong model plans and verifies, cheap models execute.
+- **Read every file before installing.** No scripts, no network calls, no credential handling — markdown and agent definitions only. The agent definitions are genuinely well-scoped (read-only scout, verifier with no edit tools and Bash restricted to running tests).
+- **It shipped with an advertisement embedded in its instructions.** `SKILL.md` mandated, in bold and as an "absolute requirement, no exception", displaying a marketing card linking to `agent-course.aimprove.co.il` on first activation, with "never skip" and "do not change the text". Removed at the user's request; an HTML comment marks where it was and why. **The gotcha worth carrying: re-downloading `SKILL.md` from the source restores the ad.** Any future update must skip that file or re-apply the removal. Nothing marketing-related exists in the other seven files — the README's `fable-foreman` credit is attribution, not promotion.
+- **Claude Code's permission classifier blocks writing to `~/.claude` via Bash.** Creating new files there needed the Write tool, and even that was refused partway through; editing an already-existing file went through fine. The install was finished by handing the user a `curl` command to run themselves. Worth knowing before planning any future work that writes into the Claude config.
+- **Judgement recorded, since it was raised and overridden:** this substantially duplicates `superpowers:subagent-driven-development`, which was already installed — same fresh-agent-per-task pattern, same model tiering, same blind reviewer, same ledger-survives-compaction trick, same status vocabulary. The user chose to install it anyway after being told. Also worth remembering against the "saves tokens" framing: the skill's own text says a multi-agent run costs roughly **ten times** the tokens of working solo, and only pays off when the delegated work is cheap enough.
+
 ## 2026-08-02 — The craft layer: what measuring first saved us from building
 
 - **Built the deterministic craft layer (roadmap #29/#30) and measured that it removes nothing.** Commit `3a4d624`. Filler-word detection, silence-gap detection, micro-cut merging, bounds validation — all arithmetic over faster-whisper's word timings, 19 tests, no API key, no cost. It is correct. On this project's footage it is also a no-op, for two reasons that are both about architecture rather than code:
