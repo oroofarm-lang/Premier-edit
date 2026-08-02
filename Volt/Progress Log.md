@@ -11,6 +11,23 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-08-02 — The sequence was full of halves nobody asked for
+
+The user rebuilt *חליטת תה - סט מוקטן* in Premiere and reported the real problem with it: video and audio come in **linked**, so the timeline held everything — two pictures and two soundtracks per moment — and they could not tell which was the cut and which was leftovers. They deleted by hand until it read as content, and asked for Premiere's Unlink.
+
+**There is no Unlink.** Checked the whole 4,675-line `@adobe/premierepro` 26.3.0 `.d.ts`: no `unlink`, no `link`, no `setLinked`. `createOverwriteItemAction` always places both halves, and there is no video-only or audio-only variant. So the panel already did the thing by hand — park the unwanted half on a scratch track, delete it. The mechanism was right; the cleanup was broken, in two independent ways.
+
+1. **It swept three hardcoded track indexes.** A source with N audio channels occupies N tracks, so a placement lands where it lands and anything outside those three indexes survived the build.
+2. **It gathered every handle up front, then removed in a loop.** A transaction invalidates script objects read before it — so the first track cleared and the second threw `"The script object is no longer valid."`, which aborted the rest of the cleanup. The file's own comment warned about this hazard across placement and then reintroduced it across its own removals.
+
+Both are now driven by reading the sequence back rather than by assumption, and each track gets a fresh handle so one failure does not cost the others. The build also **reports the layout it actually produced** (`Final layout — V1: 19 clip(s) · A1: 9 clip(s)`) instead of inferring success from having issued the right calls — the user found the leftovers before the panel did, which is the part worth not repeating.
+
+**The method mattered more than the fix.** The panel can only run inside UXP, so this was unverifiable by construction — and the first attempt at a fix passed a simulation that the *old* code also passed, i.e. proved nothing. Widening the simulation until it reproduced the user's actual symptom is what found the stale-handle bug, and widening it again found a defect in the fix itself (the scratch band colliding with a multi-channel sound effect) plus a third pre-existing one (the seeded-media sweep had the same fixed-index flaw). See [[Decisions and Open Questions]] on why a green test you did not first watch fail is not evidence.
+
+Left behind: `premiere-panel/_sim.js` (`npm run panel:sim`), a fake Premiere running the real `build-sequence.js` across 18 scenarios — 1/2/4 audio channels × two handle-lifetime models × three plan shapes. New code 18/18, old code 12 failures including every strict-lifetime case. It models bookkeeping only: **passing it is not evidence the cut looks right in Premiere.** That check is still the user's, and still pending.
+
+Also noted from the same session and deliberately not acted on: some picture choices are B-roll the user did not like. They said it is fine for now — that is selection quality, a separate thread from this.
+
 ## 2026-08-02 — Installed a third-party orchestration skill, and stripped the ad out of it
 
 Environment change rather than project code — nothing here lives in this repo, which is exactly why it needs writing down.
