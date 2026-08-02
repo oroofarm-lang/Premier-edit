@@ -68,6 +68,16 @@ Real-footage testing (see below) surfaced two hard limits of the transcript-only
 
 **Note on this file's staleness (2026-07-31 audit):** the sections below (Planned Pipeline, Planned Agents, Premiere Integration) predate B-roll, per-segment vision, named story structures, multi-profile generation, and the refinement feature above. They're not wrong, just incomplete — check `Volt/Progress Log.md` (main branch) for the real shipped history before assuming this file is exhaustive.
 
+## Craft layer — two findings that only came from measuring
+
+[lib/craft/](lib/craft) is deterministic cleanup of the audio spine: filler words, silence gaps, micro-cut merging, bounds validation. Pure arithmetic over faster-whisper's word timings — no model call, no API key. `npm run craft:preview -- <project>` prints what it would remove without changing anything.
+
+**It removes nothing on this project's footage, and both reasons are architectural rather than bugs.** (1) Filler detection finds **0 hits across all 356 words** that carry timings, because faster-whisper normalises disfluencies as it transcribes — there is no `אהה` in the transcript even where the speaker said one. (2) Silence detection finds **0 gaps inside the spine**, because a selected moment's boundaries are *exactly* a transcript segment's boundaries and a whisper segment **is** a run of speech; the silence is what separates segments, and butt-joining already discards it. Measured across raw footage there are 16.7 reclaimable seconds; measured inside the spine the largest gap in any moment is 0.16s. Kept anyway because intra-segment pauses are real in interview and wedding footage, which is the stated next target — but don't present it as a working feature without re-measuring.
+
+Thresholds here are measured, not borrowed: gap lengths in this footage are sharply bimodal (≤0.58s or ≥1.17s, nothing between), so 0.7s is robust rather than tuned. Silence is trimmed to a 0.35s pad rather than excised, because whisper's word boundaries carry real slop — single short words are timed as long as 3.3s.
+
+**The picture layer used to be a metronome, and that was the real cause of "the cuts aren't smooth."** Before [lib/video/heuristic-layout.ts](lib/video/heuristic-layout.ts) was fixed, a real project got 21 placements of exactly 1.65s each, with only 3 of 21 cuts landing within 0.25s of a boundary in the spoken story. Three things now shape it, all free: cuts **snap to a spine boundary** within 0.5s; placement length is driven by the shot's measured `activity` and `movementCompleteness`; and the span budget is **recomputed from the time and shots actually left** each iteration — that last one is what makes varying the lengths safe, since a shot held long is paid for by its neighbours instead of by the end of the cut (drifting short exhausts the catalogue and leaves a black frame, which this planner has already produced once). Snapping is deliberately **not** applied on the LLM path: the model picks its boundaries for content reasons and moving them would fight it.
+
 ## Planned Pipeline (MVP, PRD §9)
 
 ```
