@@ -11,6 +11,22 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-08-02 — Letting the picture follow what is being said
+
+The user named the real product problem, and it is not a bug: *"אנחנו חייבים לעבור את המחסום הזה שיש לנו גם תוכן של אודיו וגם ויזואל וצריך לגרום להכל לעבוד יחד טוב."* Sound and picture are planned independently — the spine from the transcript, the picture from ffmpeg metrics — and nothing makes them agree.
+
+**One rung of that was free and already sitting in the database.** `isSyncFor` marks a shot drawn from the same clip, at the same source time, as the spine moment being heard. It was computed on every candidate and read **only by the LLM prompt** — and the LLM path does not run without a funded key. The heuristic planner, the one that actually runs, never looked at it. Third instance of the same trap in one day: a signal measured, stored, and ignored by the decision that consumes it.
+
+A/B on *חליטת תה - סט מוקטן*, same catalogue and same spine: **placements in sync 1/14 → 5/14, with diversity unchanged at 10 distinct source files.** The bonus is 0.20 — explicitly a judgement, not a measurement, and sized against the 0.12 reuse penalty — capped at two sync placements in a row, because unbroken sync is not an edit, it is the rushes. Two of the five new tests were confirmed red with the bonus removed.
+
+This is **not** semantic matching. The heuristic cannot read, so "these words are about the garden, show the garden" still needs the model. What it now has is a real, free link between sound and picture.
+
+**A key with no balance is not the same state as no key.** Running the above surfaced it: `runVideoLayout` chose the free planner on a *missing* key, so an empty balance produced a failed stage instead of a downgrade. The fallback is now on the error, and the summary records why, so the downgrade can never be silent. The standing rule "every stage has a free path" only holds if reaching that path doesn't require predicting the failure in advance.
+
+**New tooling, all free.** `npm run coherence` prints the cut moment by moment as HEARD versus SEEN — the two timelines side by side, which nothing showed before. It immediately earned itself: over *"יש פה מרווה, זאתר, אלוויזה וזוטה לבנה"* the picture shows olive saplings, a kettle and a campfire, and never the herbs being named. Also two new agents in `.claude/agents/`: `cut-coherence` (reads a built cut and reports where picture and words disagree) and `red-first` (reverts a fix and confirms its tests actually go red — the discipline that caught two vacuous tests today, made delegable). `panel-check` was corrected: it documented the harness as "generated from index.html", which only became true today.
+
+Recorded as the user's stated preference, against my assumption: **picture running past the end of the audio is welcome, not a defect** — *"אין לי בעיה עם זה כי זה נותן לי אופציה להשתמש עם זה אחרי זה גם."* The staleness fix below still stands (a layer built for a different spine is wrong regardless), but if bonus material at the tail is wanted, it should be a deliberate feature rather than a leftover. See [[Decisions and Open Questions]].
+
 ## 2026-08-02 — The tea never reached the cup
 
 With the timeline finally legible (see below), the user could report the actual editing defect for the first time: *"בעלי מזג כוס תה, אבל בסוף הוא לא מזג לכוס; רק ראו אותו מטה את הקנקן."* The action gets cut off before it resolves.

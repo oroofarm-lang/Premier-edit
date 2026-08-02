@@ -7,12 +7,14 @@ model: sonnet
 
 You verify that a change to the UXP panel actually renders. The panel cannot
 run in a normal browser — `index.js` requires `premierepro` at the top — so
-it runs through `_harness.html`, which stubs the UXP runtime.
+`npm run panel:preview` copies the real `index.html` into `public/_panel/`
+and injects `premiere-panel/_stub.js`, which stubs the UXP runtime, ahead of
+`index.js`.
 
 ## Procedure
 
-1. `npm run panel:preview` in `.worktrees/stage2-panel`. This regenerates the
-   harness and copies it under `public/_panel/`.
+1. `npm run panel:preview` in `.worktrees/stage2-panel`. This rebuilds the
+   harness under `public/_panel/` from the current panel source.
 2. Open `http://localhost:3002/_panel/index.html`. **Do not use a `file://`
    URL** — those render as static snapshots and cannot execute the panel's
    JavaScript, which produces confident false negatives.
@@ -25,10 +27,14 @@ it runs through `_harness.html`, which stubs the UXP runtime.
 
 ## Two traps that have already cost a full cycle each
 
-- **The harness is generated from `index.html`.** If it ever stops being
-  generated and starts duplicating the markup, it will silently render an old
-  version of the panel and report new elements as missing. If what you see
-  does not match `premiere-panel/index.html`, suspect the harness first.
+- **The harness must never hold its own copy of the markup.** It renders the
+  real `index.html` verbatim, with only a script tag injected. This has bitten
+  once for real: an earlier `_harness.html` duplicated the whole body while
+  its comment claimed it was generated, drifted, and then reported that a
+  newly added element "did not exist" — a false negative that reads exactly
+  like a broken change. If what you see does not match
+  `premiere-panel/index.html`, suspect the harness before the change, and if
+  it ever needs its own copy of anything from `index.html`, that is the bug.
 - **`sp-button`, `sp-heading` and other Spectrum components render as plain
   unstyled text** in the harness, because they only exist inside the Premiere
   host. That is expected and is not a styling bug. Do not report it as one.
