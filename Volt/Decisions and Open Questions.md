@@ -69,7 +69,9 @@ Part of [[Premier Edit]]. Living log — update as questions get resolved instea
 
 ## Still open
 
-- **Does the video layer read well to a human?** It is gapless, varied, well-shot and passes every mechanical check, but "the cuts are not smooth or pretty yet" was the user's own verdict and they deliberately parked it. Unmeasured.
+- **Does the video layer read well to a human?** Partly answered on 2026-08-02, and the answer had a measurable half. "The cuts are not smooth or pretty yet" turned out to be caused by the picture layer being a **metronome** — 21 placements of exactly 1.65s, with only 3 of 21 landing near a boundary in the spoken story. That part is fixed (snapping to spine boundaries, length driven by measured shot energy; see [[Progress Log]] `6bc8238`). What remains genuinely unmeasured is whether the *result* now reads well — the numbers improved, the eye has not been consulted. Needs the user's own verdict on a rebuilt sequence.
+
+- **Filler-word removal has nothing to remove, and that is a fact about the transcriber.** Built and measured 2026-08-02: 0 hits across all 356 words that carry timings, because faster-whisper normalises disfluencies out of the transcript. Silence removal likewise finds 0 gaps *inside the spine*, because a selected moment's boundaries are exactly a transcript segment's and butt-joining already discards what separates segments. The layer is kept for interview and wedding footage, where intra-segment pauses are real. This ties directly to the open transcriber decision above — a verbatim mode or a vendor engine would change the answer.
 
 - **Offering a sequence preset instead of always deriving one.** Raised by the user; not built. Deriving from the footage is right by default, but a user targeting a different delivery format has no way to say so.
 
