@@ -10,7 +10,7 @@
     "test": "vitest run",
     "generate:agent-notes": "tsx scripts/generate-agent-notes.ts",
     "analyze:shots": "tsx scripts/analyze-shots.ts",
-    "panel:preview": "mkdir -p public/_panel && cp premiere-panel/_harness.html public/_panel/index.html && cp premiere-panel/styles.css premiere-panel/index.js premiere-panel/state.js premiere-panel/build-sequence.js public/_panel/ && echo \"open http://localhost:3002/_panel/index.html\"",
+    "panel:preview": "node scripts/build-panel-harness.mjs",
     "craft:preview": "tsx scripts/craft-preview.ts",
     "panel:sim": "node premiere-panel/_sim.js",
     "measure:trim": "tsx scripts/measure-trim.ts"

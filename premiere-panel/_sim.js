@@ -1,8 +1,8 @@
 /**
  * SIM ONLY — a fake Premiere, just complete enough to run build-sequence.js
  * outside UXP and assert what ends up on which track. Not shipped; the
- * underscore prefix matches _harness.html, which does the same job for the
- * panel's markup.
+ * underscore prefix matches _stub.js, which does the same job for the
+ * panel's markup (via `npm run panel:preview`).
  *
  * Why this exists: build-sequence.js does `require("premierepro")` at the top,
  * so it only runs inside Premiere, and this project's standing rule is that

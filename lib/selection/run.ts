@@ -120,6 +120,15 @@ export async function persistSelection(
 
   await prisma.$transaction([
     prisma.selection.deleteMany({ where: { projectId } }),
+    // The picture layer is laid out against a specific spine — its placements
+    // are absolute positions on a timeline whose length this call is about to
+    // change. Leaving them behind does not merely stale the plan, it puts
+    // picture where there is no longer any audio: measured on a real project,
+    // a 34.75s picture layer survived a re-selection down to a 20.3s spine,
+    // leaving 14.45s of silent video and 8 shots starting after the cut had
+    // finished speaking. Same reasoning as the checkpoint reset below, and as
+    // lib/shots/run.ts clearing placements when window boundaries move.
+    prisma.videoPlacement.deleteMany({ where: { projectId } }),
     prisma.selection.createMany({
       data: selected.map((s) => ({
         projectId,

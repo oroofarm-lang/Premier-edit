@@ -553,11 +553,28 @@ function renderSelectionList(ulId, selections) {
  */
 function renderVideoLayer(videoLayer) {
   const block = el("video-layer-block");
+  const note = el("video-layer-note");
+  const ownRhythm =
+    "The picture is chosen separately from the sound and changes on its own " +
+    "rhythm, so these do not line up with the moments above.";
+
+  block.hidden = false;
+
+  // Say so rather than vanishing. Replacing the selection deletes the picture
+  // layer — its placements are absolute positions on a timeline whose length
+  // just changed — and the build then falls back to each moment keeping its
+  // own picture. That is a real change in how the cut looks, so hiding the
+  // block and leaving the user to notice it in Premiere is the wrong trade.
   if (!videoLayer || videoLayer.length === 0) {
-    block.hidden = true;
+    el("video-layer-count").textContent = "none yet";
+    note.textContent =
+      "No picture layer for this cut, so every moment will keep its own " +
+      "picture. Press “Generate picture layer” to plan one.";
+    el("video-layer-list").innerHTML = "";
     return;
   }
-  block.hidden = false;
+
+  note.textContent = ownRhythm;
 
   const withAudio = videoLayer.filter((v) => v.useSourceAudio).length;
   const covered = videoLayer[videoLayer.length - 1].timelineEndSec;
