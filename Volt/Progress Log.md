@@ -11,6 +11,20 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-08-02 — The tea never reached the cup
+
+With the timeline finally legible (see below), the user could report the actual editing defect for the first time: *"בעלי מזג כוס תה, אבל בסוף הוא לא מזג לכוס; רק ראו אותו מטה את הקנקן."* The action gets cut off before it resolves.
+
+**The system was discarding the exact property it selected each shot for.** The catalogue grades a window on `movementCompleteness` — "ends settled rather than mid-movement" — and then the trim kept the **head** of that window. Measured on *חליטת תה - סט מוקטן*: 18 of 19 placements trimmed, 30.1s of catalogued footage discarded, and 11 shots graded ≥0.80 lost **16.5s of their own endings**. One placement scored a perfect 1.00 on completeness and kept 38% — all of it lead-in. Of the 11 completing shots, exactly **one** reached its ending.
+
+`resolveSourceWindow` now anchors a completing shot to the end of its window and lets the trim eat the lead-in instead; a shot that never settles keeps the old head-anchored behaviour, with a ramp between them so nothing flips at a threshold. **After: 1 → 11.** It is pure and lives in `layout-plan.ts`, so both the heuristic and LLM paths and the FCP7 export all get it. `npm run measure:trim` is the script that turned the complaint into that number.
+
+Two of the six new tests were confirmed red against the head-anchored version before being trusted green — the lesson from earlier the same day, applied.
+
+**The generalisable trap:** a signal was measured, stored, used for one decision (hold length), and silently ignored by the decision that actually determines what appears on screen (which frames to take). Worth checking for elsewhere.
+
+Also worth recording honestly: the user's verdict on the previous day's metronome fix was *"החיתוכים הם אחרים… רק שלא נראה לי שזה באיכות יותר טובה"*. The variable-length cuts are not what broke the pour — placements got **longer** on average, not shorter — but "different, not better" is the honest score for that change so far, and it stays open until judged on a cut that isn't also suffering from the trim bug.
+
 ## 2026-08-02 — The sequence was full of halves nobody asked for
 
 The user rebuilt *חליטת תה - סט מוקטן* in Premiere and reported the real problem with it: video and audio come in **linked**, so the timeline held everything — two pictures and two soundtracks per moment — and they could not tell which was the cut and which was leftovers. They deleted by hand until it read as content, and asked for Premiere's Unlink.
