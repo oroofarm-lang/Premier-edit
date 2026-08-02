@@ -2,6 +2,7 @@ import path from "node:path";
 import { prisma } from "@/lib/db";
 import { snapToWordBoundary } from "./snap";
 import { resolveVideoOverride } from "./video-override";
+import { resolveSourceWindow } from "@/lib/video/layout-plan";
 import type { CutClip, CutTimeline, VideoLayerClip } from "./types";
 import type { TranscriptWord } from "@/lib/transcription/types";
 
@@ -169,15 +170,16 @@ async function buildVideoLayer(projectId: string): Promise<VideoLayerClip[]> {
   return placements.map((p) => {
     const asset = p.shot.mediaAsset;
     const span = p.timelineEndSec - p.timelineStartSec;
+    // Which part of the window to use, not just how much of it: a shot graded
+    // as completing its movement is anchored to its end so the action
+    // actually resolves on screen. See resolveSourceWindow.
+    const picked = resolveSourceWindow(p.shot, span);
     // The layout validator already guarantees the span fits inside the shot,
     // but clamp anyway: a source in/out that runs past the file is the one
     // error Premiere reports late and unhelpfully.
-    const sourceInSec = p.shot.startSec;
-    const sourceOutSec = Math.min(
-      p.shot.endSec,
-      asset.durationSec ?? p.shot.endSec,
-      sourceInSec + span,
-    );
+    const limit = Math.min(p.shot.endSec, asset.durationSec ?? p.shot.endSec);
+    const sourceOutSec = Math.min(picked.sourceOutSec, limit);
+    const sourceInSec = Math.max(0, Math.min(picked.sourceInSec, sourceOutSec));
 
     return {
       filePath: asset.filePath,

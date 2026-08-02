@@ -55,6 +55,54 @@ export type LayoutPlan = {
 const EPSILON = 0.05;
 
 /**
+ * Where a shot stops being "cut mid-move" and starts being "settles". Below
+ * ANCHOR_MIN the window has no ending worth protecting; at ANCHOR_FULL it is
+ * entirely about its ending. Between them the anchor ramps, so no shot jumps
+ * behaviour because its score moved by a hundredth.
+ */
+const ANCHOR_MIN = 0.5;
+const ANCHOR_FULL = 0.85;
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
+
+/**
+ * Picks which `span` seconds of a shot's window to actually use.
+ *
+ * The catalogue grades a window on how it **ends** — `movementCompleteness`
+ * is literally "the window ends settled rather than mid-movement". Taking the
+ * head of the window therefore throws away the exact property the shot was
+ * chosen for. Measured on a real 19-placement cut before this existed: 18 of
+ * 19 placements were trimmed, and 11 shots graded >= 0.80 lost 16.5s of their
+ * own endings. The user's report was the plain-language version of that
+ * number — someone tilts a kettle and the tea never reaches the cup.
+ *
+ * So a shot whose movement completes is anchored to the **end** of its
+ * window, and the trim eats into its lead-in instead. A shot that does not
+ * complete keeps the old head-anchored behaviour, where the action at least
+ * begins cleanly.
+ *
+ * `span` is assumed to fit the window; the caller clamps against the real
+ * file duration, which is the error Premiere reports late and unhelpfully.
+ */
+export function resolveSourceWindow(
+  shot: { startSec: number; endSec: number; movementCompleteness: number },
+  span: number,
+): { sourceInSec: number; sourceOutSec: number } {
+  const windowSec = Math.max(0, shot.endSec - shot.startSec);
+  const used = Math.max(0, Math.min(span, windowSec));
+  const slack = windowSec - used;
+
+  const anchor = clamp01(
+    (shot.movementCompleteness - ANCHOR_MIN) / (ANCHOR_FULL - ANCHOR_MIN),
+  );
+
+  const sourceInSec = shot.startSec + slack * anchor;
+  return { sourceInSec, sourceOutSec: sourceInSec + used };
+}
+
+/**
  * How far apart in the source clip two consecutive spans must sit before
  * they count as different angles rather than a jump cut.
  *

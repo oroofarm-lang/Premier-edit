@@ -3,6 +3,7 @@ import {
   buildLayoutPrompt,
   layOutSpine,
   parseLayoutPlan,
+  resolveSourceWindow,
   targetPlacementCount,
   validateLayout,
 } from "./layout-plan";
@@ -248,5 +249,54 @@ describe("buildLayoutPrompt", () => {
   it("says so when a shot has no description rather than leaving a blank", () => {
     const prompt = buildLayoutPrompt(spine, [shot({ description: null })], "SOCIAL_POST");
     expect(prompt).toContain("(לא תואר)");
+  });
+});
+
+describe("resolveSourceWindow — keeping the part the shot was chosen for", () => {
+  const window = (movementCompleteness: number) => ({
+    startSec: 10,
+    endSec: 14, // a 4s window
+    movementCompleteness,
+  });
+
+  it("anchors a completing movement to the end of its window", () => {
+    // The whole defect in one assertion: 1.5s taken from a 4s window whose
+    // movement resolves at 14s must END at 14s, not start at 10s.
+    const { sourceInSec, sourceOutSec } = resolveSourceWindow(window(1), 1.5);
+    expect(sourceOutSec).toBeCloseTo(14);
+    expect(sourceInSec).toBeCloseTo(12.5);
+  });
+
+  it("leaves a shot that never settles anchored at its head", () => {
+    const { sourceInSec, sourceOutSec } = resolveSourceWindow(window(0.2), 1.5);
+    expect(sourceInSec).toBeCloseTo(10);
+    expect(sourceOutSec).toBeCloseTo(11.5);
+  });
+
+  it("ramps between the two rather than flipping at a threshold", () => {
+    const mid = resolveSourceWindow(window(0.675), 1.5).sourceInSec;
+    expect(mid).toBeGreaterThan(10);
+    expect(mid).toBeLessThan(12.5);
+  });
+
+  it("returns the whole window when the span needs all of it", () => {
+    const { sourceInSec, sourceOutSec } = resolveSourceWindow(window(1), 4);
+    expect(sourceInSec).toBeCloseTo(10);
+    expect(sourceOutSec).toBeCloseTo(14);
+  });
+
+  it("never runs past the window when asked for more than it holds", () => {
+    const { sourceInSec, sourceOutSec } = resolveSourceWindow(window(1), 9);
+    expect(sourceInSec).toBeCloseTo(10);
+    expect(sourceOutSec).toBeCloseTo(14);
+  });
+
+  it("keeps the requested span exactly, wherever it anchors it", () => {
+    for (const completeness of [0, 0.3, 0.5, 0.7, 0.85, 1]) {
+      const { sourceInSec, sourceOutSec } = resolveSourceWindow(window(completeness), 1.75);
+      expect(sourceOutSec - sourceInSec).toBeCloseTo(1.75);
+      expect(sourceInSec).toBeGreaterThanOrEqual(10);
+      expect(sourceOutSec).toBeLessThanOrEqual(14);
+    }
   });
 });
