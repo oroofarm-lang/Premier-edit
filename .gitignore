@@ -64,3 +64,6 @@ next-env.d.ts
 
 # Scratch copy of the panel served over HTTP for verification (npm run panel:preview)
 public/_panel
+
+# Briefs and scripts written for the script-writing agents; regenerable.
+scripts-out/

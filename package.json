@@ -14,7 +14,9 @@
     "craft:preview": "tsx scripts/craft-preview.ts",
     "panel:sim": "node premiere-panel/_sim.js",
     "measure:trim": "tsx scripts/measure-trim.ts",
-    "coherence": "tsx scripts/coherence.ts"
+    "coherence": "tsx scripts/coherence.ts",
+    "script:brief": "tsx scripts/script-brief.ts",
+    "script:apply": "tsx scripts/script-apply.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

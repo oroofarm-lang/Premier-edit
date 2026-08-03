@@ -15,6 +15,27 @@ export const HEBREW_FILLERS = [
 export const ENGLISH_FILLERS = ["um", "uh", "like", "you know"] as const;
 
 /**
+ * Strips punctuation and Hebrew niqqud so "אהה," matches "אהה".
+ *
+ * Deliberately does NOT strip Hebrew prefix letters — "ואהה" is a real word
+ * being mistranscribed, not a filler, and dropping the vav would delete it.
+ *
+ * Lives here rather than beside either caller because two very different
+ * things need the *same* answer to "are these the same word": filler removal
+ * (`lib/craft/fillers.ts`) and the script validator (`lib/script/validate.ts`),
+ * which compares an agent's quoted text against the words actually spoken. If
+ * those two ever disagreed, the validator would reject honest scripts over
+ * punctuation.
+ */
+export function normaliseHebrewWord(word: string): string {
+  return word
+    .replace(/[֑-ׇ]/g, "")
+    .replace(/[.,!?;:"'׳״\-–—…()]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+/**
  * Words that carry no topical signal, so matching on them makes every segment
  * look equally relevant to a brief.
  */

@@ -1,4 +1,4 @@
-import { ENGLISH_FILLERS, HEBREW_FILLERS } from "@/lib/experts/hebrew";
+import { ENGLISH_FILLERS, HEBREW_FILLERS, normaliseHebrewWord } from "@/lib/experts/hebrew";
 import type { CraftWord, Removal } from "./types";
 
 /**
@@ -25,19 +25,6 @@ const PHRASES: string[] = [...HEBREW_FILLERS, ...ENGLISH_FILLERS]
 
 const LONGEST_PHRASE_WORDS = Math.max(...PHRASES.map((p) => p.split(" ").length));
 
-/**
- * Strips punctuation and Hebrew niqqud so "אהה," matches "אהה".
- * Deliberately does NOT strip Hebrew prefix letters — "ואהה" is a real word
- * being mistranscribed, not a filler, and stripping the vav would delete it.
- */
-function normalise(word: string): string {
-  return word
-    .replace(/[֑-ׇ]/g, "")
-    .replace(/[.,!?;:"'׳״\-–—…()]/g, "")
-    .trim()
-    .toLowerCase();
-}
-
 export function findFillerRemovals(
   words: CraftWord[],
   startSec: number,
@@ -47,7 +34,7 @@ export function findFillerRemovals(
     .filter((w) => w.startSec >= startSec && w.endSec <= endSec)
     .sort((a, b) => a.startSec - b.startSec);
 
-  const normalised = inside.map((w) => normalise(w.word));
+  const normalised = inside.map((w) => normaliseHebrewWord(w.word));
   const removals: Removal[] = [];
 
   let i = 0;
