@@ -11,6 +11,26 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-08-03 — The agents learned the middle, and one critique became a permanent rule
+
+The user's direction after seeing the first written script: *"לבנות את הסקילים הטובים האלה ואת הסוכנים הטובים האלה שהם יודעים ליצור תוכן כמו שצריך… יותר מושך וויראלי."* Cut mechanics are explicitly deferred.
+
+**Read the roster before adding to it.** The existing experts were more mature than expected — the hook expert already carries five named opening patterns and a ban list, and `narrative-structure` carries named beat structures. Two gaps were real: nothing said **why anyone is still watching at second eight**, and nothing said what a viewer should want to *do* at the end.
+
+**`retention`** names this project's actual failure, from research: a flat middle that **explains instead of unfolding**, losing viewers around seconds 5–8 *after the hook already worked*. A chronological walkthrough is exactly that shape, and it is what this footage invites. **`shareability`** covers the ending — saves and shares are stronger signals than a completed view and come from different motives, so an ending must aim at one. For herb content, saves are realistic, which is why ingredient names beat a claim about taste. Brief grew 108 → 154 lines of craft.
+
+**The agents now declare their choices** — hook type, retention device, what the ending is for — in `beats`. The hook expert had already proved the idea; extending it to the middle and the ending makes the critic's job falsifiable. *A declared open loop that never closes is a finding; "the middle drags" is an opinion.*
+
+**The A/B was worth running.** The agent's script against the deepened brief is better than the one I hand-wrote: it holds the hook's question open for **20 seconds** instead of answering it at second 6, and it cuts the name off *"נמרוד, בא לך על כוס תה?"* so the question addresses the viewer instead of letting them overhear two other people. 15 lines, 28.33s.
+
+**And the critic earned its place immediately.** Three findings I would not have caught: broken Hebrew across a join (`"שהוא מותאם גם"` → `"והקרקע שנמצאת בנגב"`, with `למזג אוויר` excised between — every line individually valid, the *seam* ungrammatical); a process beat written entirely in future tense while the user's brief asked for `הכנה בפועל`; and the big one —
+
+**Seven of fourteen joins were not cuts.** The same clip resuming exactly where it stopped, so a 15-line script was **eight moments** to a listener, with one 9.48-second unbroken take inside it. Splitting a run of speech at word boundaries is not editing, and it inflates every count meant to describe pace.
+
+That last one is **pure arithmetic**, so the critic should never have had to find it. It is now a validator warning, and it independently reproduced the critic's read exactly: *"15 lines, but 8 audible moment(s) — 7 join(s) are the same clip resuming where it stopped."* The general lesson: **when a reviewer finds something a computer could have found, the finding belongs in the computer.**
+
+One fixture failure worth keeping: my first test for the rule could never have passed, because it left artificial gaps between words. Real faster-whisper output butts words together — which is precisely why the defect exists at all.
+
 ## 2026-08-03 — The audio ramps came out, and the story moved to the front
 
 The volume ramps shipped earlier made the cut worse and were reverted the same day: *"פגעת בתוכן של האודיו וגם שחקת עם הווליום… איפה שדיבור הגברת ואיפה שערי השרקה הנמכת."* The cause was the one assumption the simulator could not check and that I flagged as unverified when shipping it — **keyframe positions are sequence-relative, not clip-relative**, so all seven ramps piled up near the start of the timeline. Kept in `CLAUDE.md` as a record of a reverted attempt, so nobody retries it blind.
