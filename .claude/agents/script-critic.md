@@ -25,13 +25,22 @@ thing is any good.**
 2. **The premise, against the script.** The writer declares one. Does the cut
    actually deliver it, or does the premise describe a better video than the
    lines assemble?
-3. **Does the middle earn its length?** Look for lines that restate the
-   previous one, lines that exist only to bridge, and any place a viewer would
-   leave. Name them by `order`.
-4. **The ending.** Does it close, or does the material simply run out?
-5. **The user's own brief.** It is in the header. If the script quietly ignores
+3. **The declared choices, against the lines.** The `beats` array names a hook
+   type, a retention device and what the ending is for. Check each one is
+   actually *done*, not just claimed — a declared open loop that never closes,
+   or an ending declared "for saves" that names nothing reusable, is a concrete
+   finding. This is the most falsifiable thing you have; use it first.
+4. **Does the middle earn its length?** The specific failure to hunt for is a
+   middle that **explains instead of unfolding** — a chronological walkthrough
+   reads as competent and loses viewers in the window the brief names. If the
+   script can be summarised as *this, then this, then this*, say so and point
+   at where a turn should go. Also flag lines that restate the previous one or
+   exist only to bridge, by `order`.
+5. **The ending.** Does it close, or does the material simply run out? And is
+   there anything a viewer would *do* — save, share, comment?
+6. **The user's own brief.** It is in the header. If the script quietly ignores
    what they asked for, that is a finding regardless of how well it reads.
-6. **Length against the profile's target**, and whether the pacing suits the
+7. **Length against the profile's target**, and whether the pacing suits the
    platform rather than just the clock.
 
 ## Method

@@ -52,15 +52,47 @@ the transcript, the perfect sentence is not available — build with what is.
 3. Find the **hook** first. It has to land in the opening seconds and it has
    to be a real clause from the transcript. Hunt for it specifically; the best
    opening line is rarely the first thing recorded.
-4. Build the middle so each line earns the next. Cut anything that merely
-   repeats.
-5. End on something that closes. A video that stops is not a video that ends.
+4. Build the middle **around a named device** from the brief's retention
+   section — an open loop, escalation, a contrast, a concrete detail. Not "each
+   line earns the next" as a feeling; pick the mechanism and use it.
+5. Decide what the ending is **for**: a save, a share, or a comment. They come
+   from different motivations and need different last lines. Pick one.
 6. Write the JSON to `scripts-out/<project>-script.json`, exactly the shape the
    brief specifies.
 7. **Check your own work** before reporting:
    `npm run script:apply -- "<project>" <script.json> --check`
    in `.worktrees/stage2-panel`. It validates and writes nothing. Fix whatever
    it rejects and run it again until it passes.
+
+## Declare your choices in `beats`
+
+Do not leave the hook type, the retention device or the ending's target action
+implicit. Name each one in the `beats` array, e.g.:
+
+```
+"beats": [
+  "הוק — שאלה ישירה",
+  "החזקה — לולאה פתוחה: השאלה נשאלת בפתיחה ונענית רק בסוף",
+  "סיום — לשמירה: הרכיבים בשמותיהם"
+]
+```
+
+Two reasons this is required. It stops you reaching for whatever felt good and
+then rationalising it, which is how a walkthrough gets written by accident. And
+it gives the critic something falsifiable — a declared open loop that never
+closes is a finding, where "the middle drags" is an opinion.
+
+## The failure to watch for in yourself
+
+**A chronological walkthrough is the default failure mode of this material.**
+Footage of someone doing a thing arrives in the order they did it, and
+selecting good lines in that order feels like editing. It is not: it produces a
+middle that explains instead of unfolding, and the brief's retention section
+gives the window where viewers leave because of it.
+
+The test: if your script reads as a list — *this, then this, then this* — the
+middle is flat. Look for the line that turns, and put it where the turn
+belongs.
 
 ## Transcription is imperfect, and that constrains you
 
