@@ -470,10 +470,28 @@ async function findLevelParam(audioItem) {
  * ramp in the wrong units would silence the cut, which is a far worse outcome
  * than leaving the joins as they are.
  */
+/**
+ * The observed value on a real project: 0.17782793939113617, which is
+ * 10^(-15/20) to float precision. Premiere's Volume component allows up to
+ * +15dB of boost, so this is **linear amplitude gain on a scale where 1.0 is
+ * that +15dB ceiling** — unity (0dB) is not 0 and not 1, it is wherever
+ * 10^(-boostDb/20) lands. `LINEAR_MAX_GAIN_DB` is Premiere's own number, not
+ * a fitted constant, so it does not need re-measuring if a different project
+ * reads a different unity value.
+ */
+const LINEAR_MAX_GAIN_DB = 15;
+/** Generous margin above unity gain, in case a source was pre-boosted. */
+const LINEAR_SCALE_CEILING = 10 ** (LINEAR_MAX_GAIN_DB / 20) + 1;
+
 function levelScale(value) {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   if (Math.abs(value) < 0.001) return { unit: "dB", full: 0, quiet: -60 };
-  if (value > 0.5 && value < 1.5) return { unit: "normalised", full: value, quiet: 0 };
+  // A genuinely linear-amplitude parameter needs no floor the way dB does:
+  // 0 is exact silence, not an approximation, so this covers both the old
+  // "reads 1" guess and the real "reads 0.178" case with one rule.
+  if (value > 0 && value <= LINEAR_SCALE_CEILING) {
+    return { unit: "linear", full: value, quiet: 0 };
+  }
   return null;
 }
 

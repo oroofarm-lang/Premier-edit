@@ -413,6 +413,16 @@ const verbose = process.argv.includes("--verbose");
     expectAudioTracks: spineOnly(2), strict: true, verbose, levelUnity: 1,
   });
   await run({
+    // The actual value read off a real project's Volume component:
+    // 10^(-15/20), i.e. linear amplitude on a scale where 1.0 is Premiere's
+    // own +15dB gain ceiling. Not a made-up edge case — this is production
+    // data, and levelScale rejected it once already.
+    label: "fades · real Premiere value (10^(-15/20), Volume max-gain scale)",
+    plan: twoLayer, audioChannels: 2,
+    expectAudioTracks: spineOnly(2), strict: true, verbose,
+    levelUnity: 0.17782793939113617,
+  });
+  await run({
     label: "fades · refuses an unrecognised scale", plan: twoLayer, audioChannels: 2,
     expectAudioTracks: spineOnly(2), strict: true, verbose,
     levelUnity: 7.5, expectFades: false,
