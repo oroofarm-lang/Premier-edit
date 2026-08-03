@@ -12,15 +12,22 @@ import { platformReelsExpert } from "./platform-reels";
 import { platformYoutubeExpert } from "./platform-youtube";
 import { premiereCraftExpert } from "./premiere-craft";
 import { qcExpert } from "./qc";
+import { retentionExpert } from "./retention";
+import { shareabilityExpert } from "./shareability";
 
 export type { Expert, ExpertContext, PipelineStage } from "./types";
 
 /**
  * The expert roster, in the order their sections appear in an assembled
  * prompt. Order is editorial, not alphabetical: the platform frames what kind
- * of video this is, structure decides the shape, the hook decides the opening,
- * pacing decides the lengths, and the domain/language experts qualify the
- * material — each one narrowing the decision the one before it opened.
+ * of video this is, structure decides the shape, the hook opens it, retention
+ * holds the middle, shareability decides what the ending is *for*, pacing
+ * decides the lengths, and the domain/language experts qualify the material —
+ * each one narrowing the decision the one before it opened.
+ *
+ * `retention` and `shareability` were added last and cover the two gaps the
+ * others left: nothing said why anyone is still watching at second eight, and
+ * nothing said what a viewer should want to *do* at the end.
  */
 export const EXPERTS: readonly Expert[] = [
   platformReelsExpert,
@@ -28,6 +35,8 @@ export const EXPERTS: readonly Expert[] = [
   platformYoutubeExpert,
   narrativeStructureExpert,
   hookExpert,
+  retentionExpert,
+  shareabilityExpert,
   pacingExpert,
   framingExpert,
   foodAndProductExpert,

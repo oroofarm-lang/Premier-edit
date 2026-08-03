@@ -26,6 +26,22 @@ import type {
 /** Shorter than this is a flicker, not a line of speech. */
 export const MIN_LINE_SEC = 0.4;
 
+/**
+ * How close two consecutive lines from one clip have to be before the join
+ * between them is inaudible.
+ *
+ * Found by a critic reading a real script: seven of fourteen joins were the
+ * same clip resuming exactly where it left off, so a "15 line" cut was eight
+ * moments as far as a listener was concerned, with one 9.5-second unbroken
+ * take inside it. Every line validated — the fault is in the *seam*, which no
+ * per-line rule can see.
+ *
+ * Splitting a single run of speech at word boundaries is not editing, and it
+ * inflates every count that is supposed to describe pace. Cheap arithmetic
+ * catches it, so the critic should not have to.
+ */
+export const CONTIGUOUS_JOIN_SEC = 0.05;
+
 /** Timing slack when asking whether a word falls inside a span, in seconds. */
 const EPSILON = 0.02;
 
@@ -186,6 +202,35 @@ export function validateScript(
   const totalDurationSec = round(
     tightened.reduce((sum, l) => sum + (l.endSec - l.startSec), 0),
   );
+
+  // Joins the ear will not hear. Reported against the script's own order, not
+  // the source times, because the question is what a listener experiences.
+  const inOrder = [...tightened].sort((a, b) => a.order - b.order);
+  let inaudibleJoins = 0;
+  for (let i = 1; i < inOrder.length; i++) {
+    const prev = inOrder[i - 1];
+    const next = inOrder[i];
+    if (
+      prev.mediaAssetId === next.mediaAssetId &&
+      Math.abs(next.startSec - prev.endSec) <= CONTIGUOUS_JOIN_SEC
+    ) {
+      inaudibleJoins += 1;
+      warnings.push({
+        order: next.order,
+        message:
+          `Continues line ${prev.order} from the same clip with no gap — the ear ` +
+          `hears one moment, not a cut. Splitting a run of speech does not make it two beats.`,
+      });
+    }
+  }
+  if (inaudibleJoins > 0) {
+    warnings.push({
+      order: null,
+      message:
+        `${inOrder.length} lines, but ${inOrder.length - inaudibleJoins} audible moment(s) — ` +
+        `${inaudibleJoins} join(s) are the same clip resuming where it stopped.`,
+    });
+  }
 
   const target = options.targetDurationSec;
   const drift = Math.abs(totalDurationSec - target) / target;

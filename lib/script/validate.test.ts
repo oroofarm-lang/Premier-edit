@@ -197,3 +197,65 @@ describe("validateScript — what it returns when it passes", () => {
     expect(result.totalDurationSec).toBeCloseTo(3.6);
   });
 });
+
+describe("validateScript — joins the ear will not hear", () => {
+  /**
+   * Words butted straight together, which is what faster-whisper actually
+   * produces — it stretches word boundaries so intra-segment gaps are usually
+   * exactly zero. `A` above leaves an artificial 0.2s gap between words, so it
+   * can never produce the contiguous join this rule exists to catch.
+   */
+  const RUN: ScriptSource = {
+    mediaAssetId: "asset-run",
+    fileName: "RUN.MP4",
+    words: ["יש", "פה", "מרווה", "וזעתר"].map((word, i) => ({
+      word,
+      startSec: i,
+      endSec: i + 1,
+    })),
+  };
+  const runOptions: ValidateOptions = { ...options, sources: [...options.sources, RUN] };
+
+  /** Words `from`..`to` of RUN, whose spans meet exactly. */
+  const runLine = (order: number, from: number, to: number) => ({
+    order,
+    mediaAssetId: RUN.mediaAssetId,
+    startSec: from,
+    endSec: to + 1,
+    text: RUN.words.slice(from, to + 1).map((w) => w.word).join(" "),
+    reason: "test",
+  });
+
+  it("warns when a line just resumes the previous one from the same clip", () => {
+    // One run of speech split at a word boundary, which is not a cut.
+    const result = validateScript(script([runLine(0, 0, 1), runLine(1, 2, 3)]), runOptions);
+    expect(result.ok).toBe(true);
+    expect(
+      result.warnings.some((w) => w.message.includes("hears one moment, not a cut")),
+    ).toBe(true);
+  });
+
+  it("counts audible moments, not lines", () => {
+    const result = validateScript(script([runLine(0, 0, 1), runLine(1, 2, 3)]), runOptions);
+    expect(
+      result.warnings.some((w) => w.message.includes("2 lines, but 1 audible moment")),
+    ).toBe(true);
+  });
+
+  it("says nothing when the same clip resumes after a real gap", () => {
+    const result = validateScript(
+      script([line(0, A, 0, 1), line(1, A, 3, 4)]),
+      options,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.warnings.some((w) => w.message.includes("one moment"))).toBe(false);
+  });
+
+  it("says nothing when consecutive lines come from different clips", () => {
+    const result = validateScript(
+      script([line(0, A, 0, 1), line(1, B, 0, 1, { startSec: 1.8 })]),
+      options,
+    );
+    expect(result.warnings.some((w) => w.message.includes("one moment"))).toBe(false);
+  });
+});
