@@ -68,6 +68,25 @@ Real-footage testing (see below) surfaced two hard limits of the transcript-only
 
 **Note on this file's staleness (2026-07-31 audit):** the sections below (Planned Pipeline, Planned Agents, Premiere Integration) predate B-roll, per-segment vision, named story structures, multi-profile generation, and the refinement feature above. They're not wrong, just incomplete — check `Volt/Progress Log.md` (main branch) for the real shipped history before assuming this file is exhaustive.
 
+## Script layer — the story is written, not scored
+
+[lib/script/](lib/script) is the path where **what the video says** is decided by a writer instead of a scoring loop. It exists because every other quality problem turned out to be downstream of this one: the cut can have clean tracks, completed actions and matched picture and still be about nothing.
+
+```
+npm run script:brief -- "<project>"                          everything spoken, in one file
+npm run script:apply -- "<project>" <script.json> [--check]  validate, then persist
+```
+
+**A script line *is* a `Selection` row**, deliberately — no new table, and the script path inherits the approval checkpoint, the picture-layer invalidation and the whole cut/export chain unchanged.
+
+**The writing runs as a Claude Code agent** (`.claude/agents/script-writer.md`, reviewed by `script-critic.md`), not as an in-app LLM call, because the Anthropic balance is empty. The app's half of the deal is to hand over a complete brief and then to **refuse anything that comes back and does not check out**. `LlmContentSelector` stays in the tree, unused on this path, for whenever a key is funded.
+
+**`validateScript` rule 3 is the one that matters.** Every other rule catches a mistake; that one catches a *fabrication*. Each line's quoted text is compared against the transcript's own word timings, so a writer cannot put words in the speaker's mouth — the real voice plays over those frames and a "better" sentence would be a lie the audience hears. Proven on real data: quoting the mangled transcription `במחלקת סמכים מרפה` validates, while correcting it to what the speaker plainly meant, `במחלקת צמחי מרפא`, is rejected with both strings shown. **Tell a writer to quote the mangled form** — the audio is right even when the transcript is not.
+
+Word-level cutting is what makes this worth doing: all transcript segments carry word timings, so a line can be half a sentence. At whole-segment granularity this project's corpus offers only 26 building blocks and no room to craft.
+
+**Audio-only builds** (`placeAudioOnly` in `build-sequence.js`, checkbox on the pipeline screen, on by default) leave V1 empty on purpose. Picture is the loudest thing in a sequence — a weak line reads as a boring shot and a strong one gets credit for the footage — so stripping the image is the only way to hear whether the words hold up, which is the question this layer exists to answer.
+
 ## Craft layer — two findings that only came from measuring
 
 [lib/craft/](lib/craft) is deterministic cleanup of the audio spine: filler words, silence gaps, micro-cut merging, bounds validation. Pure arithmetic over faster-whisper's word timings — no model call, no API key. `npm run craft:preview -- <project>` prints what it would remove without changing anything.
