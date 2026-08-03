@@ -177,6 +177,7 @@ const failures = [];
 
 async function run({
   label, plan, audioChannels, expectAudioTracks, strict, verbose,
+  audioOnly = false,
 }) {
   const state = {
     audioChannelsPerClip: audioChannels,
@@ -194,7 +195,7 @@ async function run({
 
   const lines = [];
   const { buildSequence } = loadBuildSequence(ppro);
-  await buildSequence("p1", (t) => lines.push(t));
+  await buildSequence("p1", (t) => lines.push(t), { audioOnly });
 
   const seq = state.sequence;
   const video = seq.videoTracks.map((t) => t.length);
@@ -206,11 +207,25 @@ async function run({
   let problem = null;
   try {
     assert.strictEqual(strayVideo, 0, `${strayVideo} parked picture item(s) left above V1`);
+
     assert.deepStrictEqual(
       occupiedAudio, expectAudioTracks,
       `audio on ${JSON.stringify(occupiedAudio)}, expected ${JSON.stringify(expectAudioTracks)}`,
     );
-    assert.ok(video[0] > 0, "V1 is empty");
+    if (audioOnly) {
+      // The whole point of the mode: no picture reaches the sequence at all,
+      // not even the spine's own, which is placed and then swept.
+      assert.strictEqual(
+        video.reduce((a, b) => a + b, 0), 0,
+        `audio-only left ${video.reduce((a, b) => a + b, 0)} picture item(s) on the timeline`,
+      );
+      assert.strictEqual(
+        audio[0], plan.clips.length,
+        `A1 should carry all ${plan.clips.length} line(s), carries ${audio[0]}`,
+      );
+    } else {
+      assert.ok(video[0] > 0, "V1 is empty");
+    }
 
   } catch (err) {
     problem = err.message;
@@ -285,6 +300,15 @@ const verbose = process.argv.includes("--verbose");
       await run({ label: "two layers + kept sfx", plan: withSfx, audioChannels, expectAudioTracks: spinePlusSfx(audioChannels), strict, verbose });
       await run({ label: "legacy B-roll path", plan: broll, audioChannels, expectAudioTracks: spineOnly(audioChannels), strict, verbose });
     }
+  }
+
+  // Audio only: the mode for judging a story by ear, before any picture
+  // exists to flatter or bury it.
+  for (const audioChannels of [1, 2]) {
+    await run({
+      label: "audio only", plan: twoLayer, audioChannels,
+      expectAudioTracks: spineOnly(audioChannels), strict: true, verbose, audioOnly: true,
+    });
   }
 
   console.log("");

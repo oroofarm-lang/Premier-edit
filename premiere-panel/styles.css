@@ -206,6 +206,24 @@ body {
   flex-wrap: wrap;
 }
 
+/* A build option that sits under the buttons it modifies, rather than in a
+   settings screen away from the action it changes. */
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-block-start: var(--gap);
+  font-size: var(--fs-meta);
+  color: var(--cosmic-muted);
+  cursor: pointer;
+}
+
+.check-row input {
+  margin: 0;
+  flex: none;
+  accent-color: var(--cosmic-violet);
+}
+
 /* ----------------------------------------------------------------- cards */
 
 .card {

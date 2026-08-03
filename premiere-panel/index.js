@@ -504,7 +504,8 @@ async function onBuildClicked() {
 
     setStatus("Review the plan, then confirm.");
     el("confirm-text").textContent =
-      `Build ${plan.clips.length} clips into a new sequence named "${plan.name} (Premier Edit)"?`;
+      `Build ${plan.clips.length} clips into a new sequence named "${plan.name} (Premier Edit)"` +
+      (el("audio-only-check").checked ? ", audio only?" : "?");
     await el("confirm-dialog").uxpShowModal({
       title: "Build sequence?",
       size: { width: 380, height: 260 },
@@ -517,10 +518,14 @@ async function onBuildClicked() {
 async function onConfirmed() {
   el("confirm-dialog").close();
   setDisabled(el("build-button"), true);
+  const audioOnly = el("audio-only-check").checked;
   setStatus("Building…", { loading: true });
   try {
-    const result = await buildSequence(currentProjectId, log);
-    setStatus(`Done — "${result.sequenceName}" with ${result.clips} clips.`);
+    const result = await buildSequence(currentProjectId, log, { audioOnly });
+    setStatus(
+      `Done — "${result.sequenceName}" with ${result.clips} clips` +
+        (result.audioOnly ? ", audio only." : "."),
+    );
     await refreshPremiereState();
   } catch (err) {
     setStatus(`Build failed: ${err.message}`, { error: true });

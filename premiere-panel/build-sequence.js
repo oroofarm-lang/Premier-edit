@@ -518,11 +518,53 @@ async function placeTwoLayers(project, sequence, plan, mediaByName, log) {
   await reportLayout(project, keptAudio, log);
 }
 
-async function buildSequence(projectId, log) {
+/**
+ * Builds the soundtrack and nothing else: the spine's audio on A1, its own
+ * picture parked and swept, V1 left deliberately empty.
+ *
+ * This exists for judging a story rather than for delivering a cut. Picture is
+ * the loudest thing in a sequence — a weak line reads as a boring shot, and a
+ * strong one gets credit for the footage over it. Stripping the image is the
+ * only way to hear whether the words hold up on their own, which is the
+ * question the script layer is built to answer.
+ */
+async function placeAudioOnly(project, sequence, plan, mediaByName, log) {
+  const editor = ppro.SequenceEditor.getEditor(sequence);
+
+  for (const clip of plan.clips) {
+    const item = mediaByName.get(clip.fileName);
+    setInOut(project, item, clip.sourceInSec, clip.sourceOutSec, `set in/out for ${clip.fileName}`);
+    overwriteAt(
+      project, editor, item, clip.timelineStartSec,
+      SCRATCH_VIDEO_TRACK, 0,
+      `place audio ${clip.fileName} at ${clip.timelineStartSec}s`,
+    );
+  }
+  log(`Placed the audio spine: ${plan.clips.length} moment(s), no picture`);
+
+  // Everything occupied is spine audio — nothing else was placed — so the
+  // scratch band starts immediately above it and the sweep takes the parked
+  // picture off V2 with it.
+  const keptAudio = keptAudioTracks(
+    await trackCounts(project),
+    (await topOccupiedAudioTrack(project)) + 1,
+  );
+  try {
+    await sweepToKeptTracks(project, keptAudio, log);
+  } catch (err) {
+    log(`Warning: could not clear the parked media (${err.message}).`);
+  }
+  await reportLayout(project, keptAudio, log);
+}
+
+async function buildSequence(projectId, log, options = {}) {
+  const audioOnly = options.audioOnly === true;
   const plan = await fetchPlan(projectId);
-  const layerNote = plan.videoLayer?.length
-    ? `, picture layer of ${plan.videoLayer.length} shot(s)`
-    : "";
+  const layerNote = audioOnly
+    ? ", audio only"
+    : plan.videoLayer?.length
+      ? `, picture layer of ${plan.videoLayer.length} shot(s)`
+      : "";
   log(`Plan: ${plan.clips.length} clips, ${plan.durationSec}s, ${plan.fps}fps${layerNote}`);
 
   const project = await ppro.Project.getActiveProject();
@@ -546,7 +588,9 @@ async function buildSequence(projectId, log) {
   const sequence = (await project.getActiveSequence()) ?? created;
 
   const hasVideoLayer = Array.isArray(plan.videoLayer) && plan.videoLayer.length > 0;
-  if (hasVideoLayer) {
+  if (audioOnly) {
+    await placeAudioOnly(project, sequence, plan, mediaByName, log);
+  } else if (hasVideoLayer) {
     await placeTwoLayers(project, sequence, plan, mediaByName, log);
   } else {
     // No video-layout stage has run for this project, so each moment keeps
@@ -557,7 +601,8 @@ async function buildSequence(projectId, log) {
   return {
     sequenceName,
     clips: plan.clips.length,
-    videoClips: hasVideoLayer ? plan.videoLayer.length : 0,
+    videoClips: audioOnly || !hasVideoLayer ? 0 : plan.videoLayer.length,
+    audioOnly,
   };
 }
 
