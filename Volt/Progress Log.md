@@ -11,6 +11,18 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-08-03 — The volume scale, decoded from one number
+
+Second real build. The panel could now read the level — and rejected it, correctly reporting the value: `0.17782793939113617`, "neither 0 (dB) nor ~1 (normalised)".
+
+That number is exact: `10^(-15/20)` to float precision. Not a mystery — **Premiere's Volume component allows up to +15dB of boost**, so this is linear amplitude gain on a scale where 1.0 is that ceiling. Unity (0dB) sits at `10^(-15/20)` because that is where 0dB lands on a scale normalised to +15dB full-scale, not at 0 or 1.
+
+The fix is not a third special case bolted onto "dB or normalised" — it's the correct general rule: any positive value up to Premiere's own +15dB ceiling is linear amplitude, and **on a genuinely linear scale, 0 is exact silence**, needing no approximated floor the way dB's `-60` guess does. The old "reads 1" case turns out to just be this rule's boundary.
+
+Verified the way yesterday's mistake demands: reverted to the two-scale model and confirmed exactly the one new scenario (the real value) goes red, nothing else. The existing refusal test (7.5) still refuses — 7.5 sits above the +15dB ceiling (~6.62), so widening the rule didn't widen it into nonsense.
+
+Two real builds, two real API facts learned that neither the `.d.ts` nor Adobe's reference stated: the component chain shape, and now the level's actual units. Both were only reachable by running it.
+
 ## 2026-08-03 — First real Premiere run of the audio ramps: one win, one miss
 
 The user built the sequence and pasted the panel log. Two results, and the bigger one is the quiet one.

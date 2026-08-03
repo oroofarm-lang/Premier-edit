@@ -79,6 +79,9 @@ Part of [[Premier Edit]]. Living log — update as questions get resolved instea
 > [!success] A shot is trimmed from its lead-in, not its ending (2026-08-02)
 > The catalogue grades a window on how it **ends**; the trim was keeping its **head**, discarding the property the shot was chosen for. On real footage, 11 shots graded ≥0.80 on `movementCompleteness` lost 16.5s of their own endings and only 1 of them reached its resolution. Now a completing shot is anchored to the end of its window. **The wider rule: when something reads badly on screen, check whether the signal that was measured survives all the way to the frames that actually land in the sequence** — here it shaped the hold length and was ignored by the trim.
 
+> [!success] Premiere's Volume param: linear gain to a +15dB ceiling (2026-08-03)
+> The real value an untouched clip's Volume level reads is `0.17782793939113617` — `10^(-15/20)` to float precision, because Premiere's Volume component allows up to +15dB of boost and this is linear amplitude gain scaled to that ceiling. Neither the `.d.ts` nor Adobe's reference states this. Now recognised as one general rule rather than a guessed second scale, with 0 as exact silence.
+
 > [!success] Unlink-by-hand is confirmed in real Premiere (2026-08-03)
 > The park-the-unwanted-half-and-sweep approach — the panel doing manually what there is no UXP Unlink command for — produced a clean `V1: 14 · A1: 7` on a real build, with all 21 parked items removed. This was the defect that made the output unusable, and it is closed. Also learned there: a plain audio clip's component chain is exactly two fixed effects, `Volume / Internal Volume Stereo` and `Channel Volume / Internal Channel Volume Stereo`.
 
