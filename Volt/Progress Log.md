@@ -11,6 +11,24 @@ aliases:
 
 Part of [[Premier Edit]]. Newest entry on top.
 
+## 2026-08-03 — The audio ramps came out, and the story moved to the front
+
+The volume ramps shipped earlier made the cut worse and were reverted the same day: *"פגעת בתוכן של האודיו וגם שחקת עם הווליום… איפה שדיבור הגברת ואיפה שערי השרקה הנמכת."* The cause was the one assumption the simulator could not check and that I flagged as unverified when shipping it — **keyframe positions are sequence-relative, not clip-relative**, so all seven ramps piled up near the start of the timeline. Kept in `CLAUDE.md` as a record of a reverted attempt, so nobody retries it blind.
+
+**That failure ended a longer thread, and the user named the real problem.** Several rounds went into *how* the cut is assembled — clean tracks, completed actions, sync — while what actually decides whether a video is good, **what it says and in what order**, was still being chosen by a heuristic scoring loop that cannot read. Their redirect: *"נביא להם את כל מה שדובר והם צריכים לבנות מזה סיפור… אנחנו נבנה את האודיו מתוך התסריט שלהם."*
+
+**What shipped: `lib/script/`.** `npm run script:brief` writes everything spoken into one file an agent can read cold; the agent writes a script; `npm run script:apply` validates and persists. A script line **is** a `Selection` row, so nothing downstream changed — the approval checkpoint, the picture-layer invalidation and the export chain all still work.
+
+**The gate that matters is the anti-fabrication one.** Each line's quoted text is checked against the transcript's own word timings. Proven on real data: quoting the mangled transcription `במחלקת סמכים מרפה` validates, while "correcting" it to what the speaker plainly meant — `במחלקת צמחי מרפא` — is rejected with both strings shown. That is exactly the helpful-looking edit that would leave subtitle and audio disagreeing, and it is the failure nothing downstream would ever catch.
+
+Five validator rules, each watched failing against a permissive version before being trusted. 17 new tests, 177 total.
+
+**Also: audio-only builds.** V1 left deliberately empty, on by default while the story is being iterated. Picture is the loudest thing in a sequence — a weak line reads as a boring shot and a strong one gets credit for the footage over it — so stripping the image is the only way to hear whether the words hold.
+
+**First real script, on *חליטת תה - סט מוקטן*:** 8 lines, 24.1s against a 30s target, validated first pass. It opens on *"נמרוד, בא לך על כוס תה?"*, lets the reply *"מה יש בתה?"* carry the curiosity, answers with the four herbs, spends its one long line on the only real information in the footage (a desert plant adapted to the Negev), shows two ingredients going in, and closes by returning to the opening question with the tea now poured. Word-level cutting is what made that possible — at whole-segment granularity there were only 26 building blocks.
+
+Worth noting for next session: the new `script-writer` and `script-critic` agents exist but **could not be dispatched** — agent types load at session start. I wrote this first script myself, following the agent's own instructions. A restart makes them available.
+
 ## 2026-08-03 — The volume scale, decoded from one number
 
 Second real build. The panel could now read the level — and rejected it, correctly reporting the value: `0.17782793939113617`, "neither 0 (dB) nor ~1 (normalised)".

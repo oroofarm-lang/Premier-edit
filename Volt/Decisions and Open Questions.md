@@ -79,6 +79,15 @@ Part of [[Premier Edit]]. Living log — update as questions get resolved instea
 > [!success] A shot is trimmed from its lead-in, not its ending (2026-08-02)
 > The catalogue grades a window on how it **ends**; the trim was keeping its **head**, discarding the property the shot was chosen for. On real footage, 11 shots graded ≥0.80 on `movementCompleteness` lost 16.5s of their own endings and only 1 of them reached its resolution. Now a completing shot is anchored to the end of its window. **The wider rule: when something reads badly on screen, check whether the signal that was measured survives all the way to the frames that actually land in the sequence** — here it shaped the hold length and was ignored by the trim.
 
+> [!success] The story is written, not scored (2026-08-03)
+> Every quality complaint about the cuts turned out to be downstream of one thing: what the video *says* was chosen by a heuristic scoring loop that cannot read. `lib/script/` moves that decision to a writer. **A script line is a `Selection` row** — no new table, and the whole approval/cut/export chain works unchanged. The writing runs as a Claude Code agent rather than an in-app LLM call because the API balance is empty; the app's job is to hand over a complete brief and refuse anything that fails validation.
+
+> [!success] A writer may not put words in the speaker's mouth (2026-08-03)
+> The validator compares each line's quoted text against the transcript's own word timings. This is the only rule that catches a *fabrication* rather than a mistake, and nothing downstream would ever notice one — the real voice plays over those frames. The concrete trap, proven on real footage: the transcription mangles `צמחי מרפא` into `סמכים מרפה`, and "correcting" the quote is rejected. **Tell a writer to quote the mangled form** — the audio is right even when the transcript is not.
+
+> [!warning] Reverted: volume ramps on audio joins (2026-08-03)
+> Shipped and removed the same day for making the cut audibly worse. Keyframe positions are **sequence-relative, not clip-relative** — the one assumption the simulator could not check, flagged as unverified at ship time, and wrong. All the ramps piled up near the start of the timeline. Hard audio cuts are correct until asked otherwise; the FCP7 XML path remains the only route to a real crossfade.
+
 > [!success] Premiere's Volume param: linear gain to a +15dB ceiling (2026-08-03)
 > The real value an untouched clip's Volume level reads is `0.17782793939113617` — `10^(-15/20)` to float precision, because Premiere's Volume component allows up to +15dB of boost and this is linear amplitude gain scaled to that ceiling. Neither the `.d.ts` nor Adobe's reference states this. Now recognised as one general rule rather than a guessed second scale, with 0 as exact silence.
 
