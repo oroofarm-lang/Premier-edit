@@ -13,6 +13,26 @@ Part of [[Premier Edit]]. Newest entry on top.
 
 Older entries: [[Progress Log 2026-07]] (scaffold through 2026-07-31).
 
+## 2026-08-07 — The silence the transcript could not report
+
+The user listened to the audio-only cut (task #86): content relatively fine, but **"יש שם שקט רצוף"** — a stretch of continuous silence. Word timings said there was none, and that turned out to be the whole story.
+
+**What the transcript claimed.** No timeline gaps (clips are butt-joined by `playhead` in `lib/cut/build.ts`), and the largest gap *between* words in any selected line was **0.16s**. `silencedetect` at −30dB across all eight selected spans in the real footage: nothing. By every available signal the cut was clean.
+
+**What the audio actually held.** A level profile of the rendered cut found **−34 to −38dB for a full second at 18.6s**, with speech at −15dB either side. It sits inside the word `מרווה`, which faster-whisper reports as 1.57–2.85s (1.28s) while only the last third is speech. The preceding word ends at *exactly* 1.57, so there is no gap to find — `lib/craft/silence.ts` is structurally blind to it. **A transcript measures words; trusting it as a measurement of sound is a category error.** [[Tech Stack]] already recorded that whisper's boundaries carry slop; what was new is that the slop *hides dead air inside a word* rather than beside it.
+
+`lib/craft/quiet.ts` asks ffmpeg instead — free, no key. Three things it cost, each a repeat of a pattern this project already knows:
+
+1. **The threshold, guessed from the wrong statistic.** Mean levels separate cleanly (speech −12 to −20dB, quiet −33 to −39dB), which argued for −28dB. That finds **nothing**: `silencedetect` needs a *continuous* run below the threshold, and this outdoor footage's room tone peaks at **−23.7dB** inside the quiet, shattering the run. The threshold has to clear the noise floor's *peaks*, not its mean. −22dB is correct and robust — −22 finds 1.018s, −20 finds 1.028s.
+2. **A silent no-op, in the new code, caught before shipping.** `measure-quiet.ts` resolved on ffmpeg's `close` without checking the exit code, so an unreadable file printed "No such file or directory", emitted no `silence_start` lines, and reported *no silence found* — indistinguishable from a clean measurement. This is the fourth instance of the family in `CLAUDE.md`. It now fails loudly.
+3. **Deleting speech to remove a pause.** `MIN_FRAGMENT_SEC` (0.7) is a *picture* floor, matching `MIN_PLACEMENT_SEC` so a shot is never a flicker. Applied to audio it discarded the **0.38s fragment holding `מרווה` itself** — the point of that line. A short fragment of audio is a word, not a flicker. `planCleanup` now takes `minFragmentSec`; the spine passes 0.3. Caught only because each removal was validated by measuring the level *inside* it.
+
+**Also: `planCleanup` had never been wired to anything that writes.** Since Phase 3 its only caller was `craft:preview`. `script-apply.ts` is the first to persist what it finds.
+
+**`npm run render:spine` is the tool that made this tractable** — renders the approved spine to a wav and measures it. "Does the story hold up as sound alone" no longer needs a Premiere build, which closes the slow half of task #86's loop.
+
+**Verified on the real project:** 24.10s → 22.04s, five pauses removed, 8 lines → 11 moments, every removed span measured −35dB or quieter, and the 18.6s hole now reads −14 to −19dB with `מרווה` intact. One 0.38s residual remains. 194 tests, tsc clean.
+
 ## 2026-08-07 — Measured where the tokens were going, and it was our own notes
 
 No feature work. The user asked what state the project is in and to cut token waste — delete what is not needed, move what is to the vault.

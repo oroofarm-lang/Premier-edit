@@ -39,6 +39,15 @@ These four break things silently rather than loudly, and each cost a debugging s
 > [!bug] The vision model describes each frame separately unless told not to
 > Three frames sampled from one clip produced 2–3 concatenated JSON objects that failed `JSON.parse`, often after blowing the token budget. Two fixes, both needed: the prompt states explicitly that multiple frames describe *one continuous clip* and asks for exactly one object even when content changes across them, and `lib/vision/claude-vision.ts` extracts the first balanced-brace object rather than trusting the whole response to be valid.
 
+> [!bug] A transcript measures words, not sound — dead air can hide *inside* a word
+> `lib/craft/silence.ts` looks for gaps *between* words and is structurally blind to the defect that reached the user's ear. faster-whisper often reports no gap at all, absorbing a pause into a neighbouring word's own span: `מרווה` in `0X7A1692` is reported as 1.57–2.85s while the level profile shows −34 to −38dB for the first 0.95s and speech only in the last third. The previous word ends at exactly 1.57, so there is nothing for a gap rule to see. `lib/craft/quiet.ts` measures with ffmpeg instead.
+>
+> **Pick the threshold off the noise floor's peaks, not its mean.** Speech means −12 to −20dB and quiet means −33 to −39dB argue for −28dB, which finds *nothing*: `silencedetect` needs a continuous run below the threshold, and this footage's room tone peaks at −23.7dB inside the quiet. `QUIET_NOISE_DB` is −22 and stable (−22 → 1.018s, −20 → 1.028s).
+>
+> **`MIN_FRAGMENT_SEC` (0.7) is a picture floor — never apply it to audio.** It matches `MIN_PLACEMENT_SEC` so a shot is never a flicker. Used on the spine it discarded the 0.38s fragment carrying `מרווה` itself: deleting a word to remove a pause. `planCleanup` takes `minFragmentSec`; the spine passes `MIN_SPINE_FRAGMENT_SEC` (0.3).
+>
+> Validate a removal by measuring the level *inside* it — a loud one means speech is being cut. That check is what caught the dropped word.
+
 > [!bug] Splitting a run of speech at word boundaries is not a cut
 > `CONTIGUOUS_JOIN_SEC` (0.05s) in `lib/script/validate.ts` warns when two consecutive script lines come from the same clip with no audible gap. A critic reading a real script found 7 of 14 joins were the same take resuming exactly where it stopped, so a "15 line" cut was **8 moments** to a listener, with one 9.5s unbroken take inside it. Every line validated individually — the fault is in the *seam*, which no per-line rule can see. The validator now reproduces that count as arithmetic so a critic does not have to notice it.
 

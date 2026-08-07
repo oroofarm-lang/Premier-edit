@@ -83,7 +83,9 @@ Both have caused user-visible quality complaints more than once. Check for them 
 1. **A signal measured, stored, then ignored by the decision that consumes it.** `movementCompleteness` scaled hold length while the trim ignored it (the pour that never reached the cup: 11 shots graded ≥0.80 lost 16.5s of *their own endings*). `isSyncFor` was read by the LLM prompt but not by the heuristic planner that actually runs. When something reads badly on screen, verify the signal survives all the way to the frames that ship.
 2. **State that outlives what it describes.** `VideoPlacement` rows are absolute positions on a timeline of a particular length. A 34.75s picture layer once survived a re-selection down to a 20.3s spine, leaving 14.45s of picture past the end of the audio.
 
-Diagnostics, all free: `npm run coherence` (HEARD vs SEEN per moment), `npm run measure:trim`, `npm run craft:preview`.
+3. **A transcript trusted as a measurement of sound.** Word timings found no gap over 0.16s in a cut that carried a full second of silence — faster-whisper absorbs a pause into a neighbouring word's *own span*, so no gap rule can see it. Measure audio with ffmpeg (`lib/craft/quiet.ts`), and pick a silence threshold off the noise floor's **peaks**, not its mean. Never apply the picture floor `MIN_FRAGMENT_SEC` (0.7) to audio — it deletes words.
+
+Diagnostics, all free: `npm run render:spine` (renders the spine to a wav and measures its silence — answers "does the story hold up as sound" without Premiere), `npm run coherence` (HEARD vs SEEN per moment), `npm run measure:trim`, `npm run craft:preview`.
 
 ## Premiere / UXP
 
