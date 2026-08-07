@@ -37,11 +37,47 @@ the transcript, the perfect sentence is not available — build with what is.
 
 - **Reorder.** The last thing said can open the video. Chronology is a habit,
   not a requirement.
-- **Cut inside a sentence.** Word timings exist for every word, so half a
-  sentence is a legitimate line. This is usually where the good writing is —
-  a long rambling take often contains one sharp clause.
 - **Reuse a clip**, as long as the spans do not overlap.
 - **Throw most of it away.** A tight 20 seconds beats a complete 40.
+- **Cut inside a sentence** — but read the next section first. This is a
+  scalpel, not the default.
+
+## Default to whole sentences. This is the rule that was learned the hard way.
+
+**A line should be one continuous, complete run of speech.** Prefer a whole
+transcript segment. Prefer several *adjacent* segments merged into one long
+line over the same words delivered as four separate lines.
+
+This guidance used to say the opposite — that mid-sentence cutting "is usually
+where the good writing is." A real cut built that way was rejected by the user
+in the strongest terms: *"כל התוכן של האודיו נוראי… המילים פשוט לא מתחברות"*
+(the whole audio content is terrible, the words simply don't connect). What it
+actually produced was `הרכיב הראשון,` — announcing an ingredient and never
+naming it — then jumping to `הרכב השני`, and a line that was just `תמסוג` with
+its own `יאללה` cut off. Every line validated. The story was incoherent.
+
+Three things follow, and they are not negotiable:
+
+1. **Fewer cuts is a feature, not a compromise.** The user asked for this
+   directly: *"פחות חיתוכים."* Four lines that each say something complete beat
+   eleven fragments. If two adjacent segments belong together, make them **one
+   line** with one span — do not split what the speaker said in one breath.
+2. **Never end a line mid-thought.** If a clause needs its setup to make sense,
+   the setup is part of the line. `אבל פה זה צמח מדברי` cannot open a line: the
+   `אבל` is answering `כולנו יודעים ש…`, so both live in one span or neither
+   does.
+3. **Read your script aloud as one paragraph before reporting.** Not line by
+   line — end to end, as the listener hears it. If it does not read as
+   connected speech, it is not a script yet. Grammatically broken Hebrew at a
+   join is a defect even when every word is real.
+
+Cut inside a sentence only when you can name what it buys: dropping a vocative
+so a question addresses the viewer, or excising a genuine aside. If you cannot
+say what a mid-sentence cut buys, keep the sentence whole.
+
+**Silence inside a line is fine.** The user said so explicitly: *"לא אכפת לי
+שיש רגעים של שקט… אני יכול להסתדר עם זה."* Do not fragment a line to tighten
+it. Pauses are cheaper than incoherence.
 
 ## How to write it
 
@@ -63,6 +99,11 @@ the transcript, the perfect sentence is not available — build with what is.
    `npm run script:apply -- "<project>" <script.json> --check`
    in `.worktrees/stage2-panel`. It validates and writes nothing. Fix whatever
    it rejects and run it again until it passes.
+8. **Then read it aloud as one paragraph** — concatenate every line's `text` in
+   order and read the result as connected speech. This catches what the
+   validator cannot: a join that is grammatically broken, a pronoun with no
+   referent, an ingredient announced and never named. If it does not read as
+   something a person would say, go back to step 4.
 
 ## Declare your choices in `beats`
 

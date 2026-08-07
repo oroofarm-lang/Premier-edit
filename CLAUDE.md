@@ -69,7 +69,8 @@ npm run script:apply -- "<project>" <script.json> [--check]  # validate, then pe
 
 - **A script line *is* a `Selection` row** — no new table, and the path inherits the approval checkpoint, picture-layer invalidation and the whole export chain unchanged.
 - **`validateScript` rule 3 is the one that matters.** Quoted text is compared against the transcript's own word timings, so a writer cannot put words in the speaker's mouth — the real voice plays over those frames. **Tell a writer to quote the mangled transcription**, not the corrected phrase: the audio is right even when the transcript is not.
-- Word-level cutting is the point. At whole-segment granularity this corpus offers only 26 blocks and no room to craft.
+- **A line is one continuous, complete run of speech — default to whole sentences.** This file used to say word-level cutting "is the point"; that was wrong and the user rejected the result outright (*"המילים פשוט לא מתחברות"*). Fragmenting produced `הרכיב הראשון,` never naming the ingredient, and a line that was just `תמסוג`. **Fewer cuts is a feature** (*"פחות חיתוכים"*), merging adjacent segments into one long line is preferred, and **pauses are fine** (*"לא אכפת לי שיש רגעים של שקט"*) — never fragment to tighten. Cut mid-sentence only when you can name what it buys.
+- **Read any script aloud as one paragraph before trusting it.** The validator proves every word is real; only reading catches broken Hebrew at a join or a pronoun with no referent. `scripts/_read-cut.ts`-style concatenation is the check.
 - **Audio-only builds** (`placeAudioOnly`, checkbox on the pipeline screen, on by default) leave V1 empty deliberately — picture is the loudest thing in a sequence, so stripping it is the only way to hear whether the words hold up.
 
 **Agents do the writing:** `script-writer` → `script-critic` (fresh context, never sees the writer's reasoning). Others: `cut-coherence`, `premiere-api`, `panel-check`, `red-first`, `shot-tuner`.

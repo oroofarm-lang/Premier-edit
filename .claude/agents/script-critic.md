@@ -30,7 +30,16 @@ thing is any good.**
    actually *done*, not just claimed — a declared open loop that never closes,
    or an ending declared "for saves" that names nothing reusable, is a concrete
    finding. This is the most falsifiable thing you have; use it first.
-4. **Does the middle earn its length?** The specific failure to hunt for is a
+4. **Read the whole script aloud as one paragraph, first.** Concatenate every
+   line's `text` in order and read it as connected speech — this is the single
+   most productive check you have, and it outranks everything below. A cut was
+   shipped where every line validated and the result was, in the user's words,
+   *"נוראי… המילים פשוט לא מתחברות"*: an ingredient announced and never named,
+   a line that was just `תמסוג` with its `יאללה` cut away, broken Hebrew at a
+   join. Quote any join that does not read as something a person would say.
+   Also count the cuts — the user wants **few**, and lines that could have been
+   one continuous span but were split are a finding.
+5. **Does the middle earn its length?** The specific failure to hunt for is a
    middle that **explains instead of unfolding** — a chronological walkthrough
    reads as competent and loses viewers in the window the brief names. If the
    script can be summarised as *this, then this, then this*, say so and point

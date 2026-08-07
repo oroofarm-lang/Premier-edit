@@ -39,6 +39,14 @@ These four break things silently rather than loudly, and each cost a debugging s
 > [!bug] The vision model describes each frame separately unless told not to
 > Three frames sampled from one clip produced 2–3 concatenated JSON objects that failed `JSON.parse`, often after blowing the token budget. Two fixes, both needed: the prompt states explicitly that multiple frames describe *one continuous clip* and asks for exactly one object even when content changes across them, and `lib/vision/claude-vision.ts` extracts the first balanced-brace object rather than trusting the whole response to be valid.
 
+> [!bug] Quiet is not the same as "no speech" — a stop consonant's closure is silence
+> The measured-quiet trim cut *inside* the word `בא` (timed 1.66–2.18s, measuring −39dB across 1.71–1.99s), leaving `נמרוד,` + `לך על כוס תה?` — broken Hebrew, shipped to the user. A level check alone cannot catch it: the span genuinely is quiet, and only the transcript knows a word is standing there. **ffmpeg decides where it is quiet; the transcript decides where cutting is allowed** — `rejectRegionsOverlappingWords` in `lib/craft/quiet.ts`. The trim is also opt-in (`--trim-silence`) because the user does not mind pauses and every removal adds a cut.
+
+> [!bug] Word-level cutting is the wrong default — a validated script can still be incoherent
+> Guidance used to say mid-sentence cutting "is usually where the good writing is." It produced `הרכיב הראשון,` announcing an ingredient and never naming it, then `הרכב השני`, plus `תמסוג` orphaned from its `יאללה` — and the user's verdict was *"המילים פשוט לא מתחברות"*. **Every line passed `validateScript`**, because the anti-fabrication gate proves each word was really said and cannot see whether words *connect*.
+>
+> A line is **one continuous, complete run of speech**; merge adjacent segments into one long line rather than splitting them; fewer cuts is a feature; a clause keeps its setup (`אבל פה זה צמח מדברי` cannot open a line — the `אבל` answers `כולנו יודעים ש…`). The one check that catches this class: **read the script aloud as one paragraph**, end to end, before trusting it.
+
 > [!bug] A transcript measures words, not sound — dead air can hide *inside* a word
 > `lib/craft/silence.ts` looks for gaps *between* words and is structurally blind to the defect that reached the user's ear. faster-whisper often reports no gap at all, absorbing a pause into a neighbouring word's own span: `מרווה` in `0X7A1692` is reported as 1.57–2.85s while the level profile shows −34 to −38dB for the first 0.95s and speech only in the last third. The previous word ends at exactly 1.57, so there is nothing for a gap rule to see. `lib/craft/quiet.ts` measures with ffmpeg instead.
 >

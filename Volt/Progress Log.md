@@ -13,6 +13,22 @@ Part of [[Premier Edit]]. Newest entry on top.
 
 Older entries: [[Progress Log 2026-07]] (scaffold through 2026-07-31).
 
+## 2026-08-07 — "המילים פשוט לא מתחברות": word-level cutting was the wrong default
+
+The user listened and rejected the whole thing: **"כל התוכן של האודיו נוראי… המילים פשוט לא מתחברות"**. They restated the requirement plainly — a story with a beginning, middle and end; **פחות חיתוכים**; and *"לא אכפת לי שיש רגעים של שקט"*. Two causes, both mine, and the second one is the important one.
+
+**A real regression I shipped.** The measured-quiet trim cut *inside* the word `בא` — timed 1.66–2.18s, measuring −39dB across 1.71–1.99s because **a stop consonant's closure is silence**. The result was `נמרוד,` + `לך על כוס תה?`: broken Hebrew, in the hook. My validation asked whether a removed span was *quiet* and never whether a *word* was standing in it — and quiet is not the same as no speech. Fixed by splitting the two signals along what each is actually good for: **ffmpeg decides where it is quiet, the transcript decides where cutting is allowed** (`rejectRegionsOverlappingWords`). `יאללה, תמסוג` → `תמסוג` was the same bug.
+
+**Worse, the whole feature was solving a problem the user does not have.** They do not mind pauses, and every removal *adds a cut* to a cut they want fewer cuts in — it turned 8 lines into 11 fragments. Now opt-in behind `--trim-silence`. A full round went into polishing something that made the actual complaint worse; the lesson is to confirm which axis the user is judging before optimising one.
+
+**The real defect was a premise in this project's own guidance.** `CLAUDE.md` and `script-writer` both said mid-sentence cutting "is usually where the good writing is." Measured against the result, that is false: it produced `הרכיב הראשון,` — announcing an ingredient and never naming it — immediately followed by `הרכב השני`, plus `תמסוג` orphaned from its `יאללה`. **Every line validated.** The anti-fabrication gate proves each word was really said and is structurally blind to whether the words *connect*.
+
+Now the rule is inverted: **a line is one continuous, complete run of speech**, adjacent segments merged into one long line beat the same words split, fewer cuts is a feature, and a clause that needs its setup keeps it (`אבל פה זה צמח מדברי` cannot open a line — the `אבל` answers `כולנו יודעים ש…`). Both agents must now **read the script aloud as one paragraph before reporting** — the only check that catches a grammatically broken join or a pronoun with no referent.
+
+**v3, rebuilt on that rule: 4 lines, 3 cuts, 31.53s**, validated first pass with **zero warnings** (no inaudible joins). Structure: the entire opening conversation as one unbroken 10.54s span (invitation → the viewer's own question → the ingredient list, opening a loop) → the one genuinely informative sentence in the corpus, whole, because the contrast needs its setup (14.44s) → the first ingredient already in hand, turning explanation into action (4.27s) → back to the same conversation for the pour, `בא לך? ברור` echoing the opening (2.28s). Against the previous 11 fragments.
+
+Judgement still pending — the user's ear decides, and `npm run render:spine` now makes that a one-command loop.
+
 ## 2026-08-07 — The silence the transcript could not report
 
 The user listened to the audio-only cut (task #86): content relatively fine, but **"יש שם שקט רצוף"** — a stretch of continuous silence. Word timings said there was none, and that turned out to be the whole story.
