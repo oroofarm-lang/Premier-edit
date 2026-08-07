@@ -14,13 +14,21 @@
  * Free — ffmpeg only, no API key, no model call.
  *
  *   npm run render:spine -- <projectId|nameFragment>
+ *   npm run render:spine -- <projectId|nameFragment> --script <script.json>
+ *
+ * The `--script` form renders a *candidate* script straight from its JSON
+ * without applying it, so several directions can be heard and compared before
+ * one is committed. That matters because choosing between stories is the
+ * user's call, and the previous loop forced a write to the database — and a
+ * cleared picture layer — just to listen to an option that might be rejected.
  */
 import "dotenv/config";
 import { spawn } from "node:child_process";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import ffmpegPath from "ffmpeg-static";
 import { prisma } from "../lib/db";
+import type { Script } from "../lib/script/types";
 
 const OUT_DIR = "scripts-out";
 
@@ -40,11 +48,20 @@ function run(args: string[]): Promise<{ code: number; stderr: string }> {
   });
 }
 
+/** One span to render, resolved to a real file — from the DB or from a candidate script. */
+type Moment = { order: number; filePath: string; startSec: number; endSec: number };
+
 async function main() {
-  const query = process.argv[2];
-  if (!query) {
+  const args = process.argv.slice(2);
+  const scriptFlag = args.indexOf("--script");
+  const scriptPath = scriptFlag === -1 ? null : args[scriptFlag + 1];
+  const query = args.filter((a, i) => a !== "--script" && i !== scriptFlag + 1)[0];
+
+  if (!query || (scriptFlag !== -1 && !scriptPath)) {
     const all = await prisma.project.findMany({ select: { id: true, name: true } });
-    console.error("Usage: npm run render:spine -- <projectId|nameFragment>\n");
+    console.error(
+      "Usage: npm run render:spine -- <projectId|nameFragment> [--script <script.json>]\n",
+    );
     console.error("Projects:");
     for (const p of all) console.error(`  ${p.id}  ${p.name}`);
     process.exit(1);
@@ -60,18 +77,62 @@ async function main() {
     console.error(`No project matching "${query}".`);
     process.exit(1);
   }
-  if (project.selections.length === 0) {
-    console.error(`"${project.name}" has no audio spine yet.`);
-    process.exit(1);
+
+  let moments: Moment[];
+  let label: string;
+
+  if (scriptPath) {
+    // A candidate: resolve each line's asset id against the project's own
+    // media, so a script written for another project cannot render silently.
+    const script = JSON.parse(await readFile(scriptPath, "utf8")) as Script;
+    const assets = await prisma.mediaAsset.findMany({
+      where: { projectId: project.id },
+      select: { id: true, filePath: true },
+    });
+    const pathById = new Map(assets.map((a) => [a.id, a.filePath]));
+
+    moments = [...script.lines]
+      .sort((a, b) => a.order - b.order)
+      .map((line) => {
+        const filePath = pathById.get(line.mediaAssetId);
+        if (!filePath) {
+          console.error(
+            `Line ${line.order}: mediaAssetId "${line.mediaAssetId}" is not a clip in "${project.name}".`,
+          );
+          process.exit(1);
+        }
+        return { order: line.order, filePath, startSec: line.startSec, endSec: line.endSec };
+      });
+    label = `${project.name} — candidate ${basename(scriptPath)}`;
+  } else {
+    if (project.selections.length === 0) {
+      console.error(`"${project.name}" has no audio spine yet.`);
+      process.exit(1);
+    }
+    moments = project.selections.map((s) => ({
+      order: s.order,
+      filePath: s.mediaAsset.filePath,
+      startSec: s.startSec,
+      endSec: s.endSec,
+    }));
+    label = project.name;
   }
 
   await mkdir(OUT_DIR, { recursive: true });
-  const slug = project.name.trim().replace(/\s+/g, "-");
+  const baseSlug = project.name.trim().replace(/\s+/g, "-");
+  // A candidate render is named after its script, so three directions can sit
+  // side by side instead of overwriting each other.
+  // The script's basename usually already starts with the project slug, so
+  // strip that prefix rather than repeating it in the output filename.
+  const scriptSlug = scriptPath
+    ? basename(scriptPath).replace(/\.json$/, "").replace(`${baseSlug}-`, "")
+    : "";
+  const slug = scriptSlug ? `${baseSlug}-${scriptSlug}` : baseSlug;
   const tmpDir = join(OUT_DIR, `.spine-${project.id}`);
   await rm(tmpDir, { recursive: true, force: true });
   await mkdir(tmpDir, { recursive: true });
 
-  console.log(`\n${project.name} — ${project.selections.length} moment(s)\n`);
+  console.log(`\n${label} — ${moments.length} moment(s)\n`);
 
   // Each span is extracted separately, then concatenated. Extracting first
   // (rather than one filter_complex) keeps the failure of one clip legible
@@ -80,8 +141,8 @@ async function main() {
   let playhead = 0;
   const timeline: { order: number; startSec: number; endSec: number; fileName: string }[] = [];
 
-  for (const s of project.selections) {
-    const src = s.mediaAsset.filePath;
+  for (const s of moments) {
+    const src = s.filePath;
     const dur = s.endSec - s.startSec;
     const part = join(tmpDir, `${String(s.order).padStart(3, "0")}.wav`);
 
