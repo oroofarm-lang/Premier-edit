@@ -1,166 +1,108 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repository.
+
+**This file is an index, not an archive.** It is injected into every session and re-injected after every compaction, so it holds only what changes what you type. Depth lives in `Volt/` — see *Token discipline* at the bottom before reading anything large.
 
 ## Project
 
-**Premier Edit** — an agent-based video editing system. The user gives instructions in natural language (or adjusts parameters directly), and the system performs real edits inside an Adobe Premiere Pro project: from pointing at a raw footage folder + audio folder through to a near-final cut.
+**Premier Edit** — an agent-based video editing system. The user points at a footage folder and an audio folder, gives a brief in natural language, and the system performs real edits inside Adobe Premiere Pro.
 
-Full product spec: [docs/PRD.md](docs/PRD.md). Read it for the reasoning behind any decision below — this file only summarizes the parts that should shape how code gets written.
+- Product spec: [docs/PRD.md](docs/PRD.md). Architecture and history: `Volt/Tech Stack.md`, `Volt/Progress Log.md`, `Volt/Decisions and Open Questions.md`.
+- **MVP scope: social media only** (restaurant/product reels, short posts). Wedding/long-form is a future target — don't build for it.
+- **Automation boundary: rough assembly only.** No color, no captions burn-in, no final mix. Three approval checkpoints (after ingest+transcription, after content selection, after rough cut) — no blind end-to-end runs.
 
-**MVP scope: social media content only** (restaurant/product reels, short posts). Wedding/long-form editing is a stated future target, not part of this version — don't build for it yet.
+## Standing constraints
 
-**Automation boundary (MVP):** rough assembly only. The system finds, selects, and orders takes based on the transcript + a short natural-language brief, and does a rough cut — it does **not** touch color, do final captions burn-in, or do final audio mix. The user finishes those by hand in Premiere. Three approval checkpoints gate the pipeline (after ingest+transcription, after content selection, after rough cut) — no blind end-to-end runs.
+These are not negotiable and have each been re-established more than once.
+
+1. **No Anthropic API calls.** The balance is empty and stays empty. Editorial intelligence runs as **Claude Code agents** on the user's subscription (`.claude/agents/`), never as in-app LLM calls. `LlmContentSelector` and `lib/vision/` stay in the tree, unused, for whenever a key is funded. **Every stage must have a free path** — and reaching it must not require predicting the failure in advance (a key that cannot be billed is not the same state as no key; fall back on the *error*).
+2. **Never open or script real Premiere.** Loading the panel and watching the cut is the user's own step. `npm run panel:sim` proves bookkeeping, not that a cut looks right.
+3. **Code on `stage2-panel`** (worktree `.worktrees/stage2-panel`). **`Volt/` and `docs/superpowers/specs/` on `main` only.** ⚠️ `main` is currently ~176 files behind — task #27 is the merge.
+4. **Update Volt and git every round.** The user asks for this explicitly and repeatedly.
+5. **Red-first, always.** Disable the fix and watch the test fail before believing it. Three false greens so far, two of them because a find-and-replace pattern silently matched nothing — **assert the text actually changed** before trusting a run. Agent: `red-first`.
 
 ## Collaboration note
 
-The user is **new to software development** — first project touching TypeScript/Next.js/Prisma. Build working code directly rather than leaving scaffolding as an exercise; briefly explain new patterns/tools as they're introduced instead of assuming familiarity. No deadline pressure — prefer the PRD's own staged roadmap (§12) over compressing steps.
+The user is **new to software development** — first project touching TypeScript/Next.js/Prisma. Build working code rather than leaving scaffolding as an exercise; explain new patterns briefly as they appear. No deadline pressure. The user writes in Hebrew; the product UI is English/LTR by their own decision (RTL was shipped and reverted the same day).
 
-## Tech Stack
+## Tech stack
 
-| Layer | Technology | Notes |
-|---|---|---|
-| UI + orchestration | Next.js 14 (App Router) | `npm run dev` |
-| Styling / components | Tailwind CSS + shadcn/ui | `npx shadcn@latest add <component>` to add more |
-| Data | Prisma 6 + SQLite | see below — client import path is non-default |
-| Local media layer | ffmpeg / ffprobe (npm static binaries) | see Media & transcription below |
-| Transcription | faster-whisper in a local Python venv | see Media & transcription below |
-| Visual understanding + smart selection | Anthropic API (`@anthropic-ai/sdk`) | needs `ANTHROPIC_API_KEY` in `.env`; see Visual understanding below |
-| Premiere bridge | Timeline XML export (Stage 1) → UXP/CEP panel (Stage 2) | Stage 1 only; see Premiere Integration below |
+| Layer | Technology |
+|---|---|
+| UI + orchestration | Next.js 14 App Router (`npm run dev`, port 3002 for the panel) |
+| Styling | Tailwind **v3** + shadcn/ui pinned to **Radix** |
+| Data | Prisma 6 + SQLite |
+| Media | ffmpeg / ffprobe (npm static binaries) |
+| Transcription | faster-whisper `large-v3`, local `.venv` |
+| Shot analysis | ffmpeg filters — free, no model |
+| Premiere bridge | UXP panel (`premiere-panel/`, primary) + FCP7 XML export (fallback) |
 
-**Prisma specifics:** this project uses the newer `prisma-client` generator with a custom output path. Import `PrismaClient` from `@/lib/generated/prisma/client` and enums/types from `@/lib/generated/prisma/enums` — **not** `@prisma/client` (older tutorials assume the latter — don't follow that pattern here), and note the generated folder has no barrel `index.ts`, so the bare `@/lib/generated/prisma` path does not resolve. Use the shared singleton in [lib/db.ts](lib/db.ts) rather than constructing a client per module. Config lives in `prisma.config.ts` (not just `.env`) because Prisma 6+ no longer auto-loads `.env` — `prisma.config.ts` explicitly does `import "dotenv/config"`. Schema: [prisma/schema.prisma](prisma/schema.prisma), already modeling the 8 entities from PRD §10 (`Project`, `MediaAsset`, `Transcript`, `Selection`, `Timeline`, `EditVersion`, `StylePreference`, `ApprovalCheckpoint`).
+**Rules that silently break code if ignored** — full explanations in `Volt/Tech Stack.md § Build and runtime traps` and `§ Prisma specifics`:
 
-**Media & transcription specifics:** this machine has no Homebrew and no system ffmpeg, so the binaries come from npm — `ffmpeg-static` and `@ffprobe-installer/ffprobe`. Both ship native binaries and non-JS files, so they must stay listed in `next.config.mjs` under `experimental.serverComponentsExternalPackages`; bundling them fails the build. Transcription runs **locally** through faster-whisper in `.venv` (created by `scripts/setup-transcription.sh`, gitignored), driven by `scripts/transcribe.py`, which accepts multiple audio paths in one process (loading the ~10s model weight cost once per batch, not once per file — real-footage testing showed the naive one-process-per-file approach wasted more time on reloading than on actual transcription) and prints a JSON array on stdout, progress on stderr. Model weights land in `./models` (gitignored, large-v3 is ~3GB). Node never imports a vendor SDK directly — it goes through the `Transcriber` interface in [lib/transcription/types.ts](lib/transcription/types.ts), which is what keeps open decision #1 open. `runTranscription` ([lib/transcription/run.ts](lib/transcription/run.ts)) guards against a real duplicate-invocation race observed in testing (the button disables on the next render, not synchronously, so a fast double-fire can start two batches against the same project) with an in-flight `Set` per project.
+- Import from `@/lib/generated/prisma/client` and `.../enums`, **never** `@prisma/client`. No barrel — the bare folder path does not resolve. Use the `lib/db.ts` singleton.
+- `ffmpeg-static` / `@ffprobe-installer/ffprobe` must stay in `next.config.mjs` → `experimental.serverComponentsExternalPackages`.
+- Adding a shadcn component: **use the `shadcn-add-safe` skill**, not the bare CLI. Tailwind v3 + Radix vs. the CLI's v4 + Base UI default has broken the build three times.
+- `lib/ingest/probe.ts` reads `r_frame_rate` (not `avg_frame_rate`) and applies the rotation Display Matrix. Both only matter on real camera footage; skipping the second produced a landscape sequence from vertical footage.
+- Vitest does not load `.env`, so a module importing `@/lib/db` cannot be unit-tested. This is why `refine.ts`/`refine-plan.ts` and `validate.ts`/`script-apply.ts` are split — **keep pure logic Prisma-free.**
 
-**Route-handler database gotcha (bit us once, silently):** a relative `DATABASE_URL` like `file:./dev.db` resolves against the *importing bundle's* directory at runtime, not the project root. Server actions bundle near the root and happen to find `prisma/dev.db`, but a route handler bundles into `.next/server/app/api/<route>/` and Prisma silently **creates a fresh empty database there**, so every query fails with `table \`main.Project\` does not exist` (P2021) while `prisma/dev.db` sits fine on disk. [lib/db.ts](lib/db.ts) now resolves the URL against `process.cwd()` before constructing the client. If you ever see P2021 on a route that works from a page, check which file the process actually opened (`lsof -p <pid> | grep '\.db'`) — the error message names the table, not the wrong file.
+## Architecture: two timelines, and a script in front of them
 
-**Ingest gotcha found on real camera footage, not synthetic test clips:** [lib/ingest/probe.ts](lib/ingest/probe.ts) has two ffprobe subtleties that only show up on real files. (1) It reads `r_frame_rate` (the container's declared nominal rate, e.g. exactly `50/1`) rather than `avg_frame_rate` (frame-count/duration, computed per file and almost always slightly off — e.g. `49.81` for footage that's actually a clean 50fps — which wrongly trips the FCP7 NTSC flag). (2) It reads the video stream's rotation (`side_data_list` Display Matrix, falling back to the legacy `tags.rotate`) and swaps width/height on a 90/270° turn — phones and cameras routinely store frames landscape and flag a rotation to apply at playback, so the raw encoded width/height are not the display orientation. Skipping this produced a horizontal sequence from footage shot vertically for social media.
-
-**shadcn/ui specifics — read before running `npx shadcn add ...` again:** `components.json` is pinned to `"base": "radix"` (Radix UI primitives), matching this project's Tailwind **v3** setup (`tailwind.config.ts` + `@tailwind` directives). The shadcn CLI's current defaults target Tailwind v4 and the newer Base UI library instead — running `init` without care, or trusting its generated `globals.css`/font wiring blindly, will reintroduce that mismatch. Two project-specific things exist only to bridge this gap:
-- Colors in `app/globals.css` are stored as **raw decomposed OKLCH components** (e.g. `--ring: 0.708 0 0;`, no `oklch(...)` wrapper), and `tailwind.config.ts` wraps them as `oklch(var(--x) / <alpha-value>)`. This is required so opacity-modifier utilities (`bg-primary/80`, `outline-ring/50`, etc.) work under Tailwind v3 — plain `var(--x)` mappings silently break any class using a `/NN` opacity suffix.
-- `app/layout.tsx` uses `next/font/local` for the Geist fonts (matching the files already in `app/fonts/`) — do **not** re-add `next/font/google`'s `Geist`, it isn't a real Google Fonts entry and will fail the build.
-
-When adding a new shadcn component, sanity-check its generated class list against this before assuming it works (things like `--radius-md`, `in-data-*` variants are v4-only and won't have effect here — usually harmless visually, but know why).
-
-## Open decisions resolved so far
-
-1. **Transcription engine (PRD §2.3/§7):** **local faster-whisper `large-v3`** for now, behind the `Transcriber` interface so a cloud vendor stays swappable. Chosen after an actual Hebrew test: on a clean 8s Hebrew sample, `large-v3` was near-perfect while `small` mangled ordinary words (השף→אשף, עגבניות→הגווניות), so the small models are not viable for Hebrew. Re-tested on 38 real camera clips (~8 min total audio, outdoor/noisy, natural conversation) — batched into one process (see below), the whole folder took ~5 minutes. Quality on real speech: handles natural conversation well, but consistently mangled the domain-specific botanical term "זעתר" (za'atar) in a recurring phrase across ~6 different clips — different garbage each time, never correct. Confirms the standing caveat that TTS-clean audio is an easy case; still worth comparing against Deepgram/ivrit.ai specifically on domain vocabulary, not general speech quality. The local path's real advantage remains that client footage never leaves the machine.
-2. **Timeline export format (PRD §11.6):** **FCP7 XML** for the MVP — Premiere Pro has native File→Import support for it, no plugin needed. OTIO has no native Premiere import path. Revisit once the user test-imports a sample file in their actual Premiere version.
-3. **Budget / LLM sizing (PRD §7):** **resolved** — the user created an Anthropic API key (separate billing from a Claude.ai subscription) specifically to get real visual understanding and narrative-aware content selection, after real-footage testing showed the no-API heuristic couldn't see silent clips or build a coherent sequence. See "Visual understanding & smart selection" below.
-
-## Visual understanding & smart selection
-
-Real-footage testing (see below) surfaced two hard limits of the transcript-only heuristic selector: a clip with no speech is invisible to it no matter how visually relevant it is, and it has no sense of narrative — it will happily reuse one long clip four times rather than build a hook→body→payoff sequence. Both needed an LLM, which needed the budget decision above resolved.
-
-**Architecture**, following the same vendor-neutral-interface pattern as `Transcriber`:
-- [lib/vision/types.ts](lib/vision/types.ts) — `VisionAnalyzer` interface. [lib/vision/claude-vision.ts](lib/vision/claude-vision.ts) — the only implementation so far, `claude-haiku-4-5` (cost-efficient; this is closer to captioning than open-ended reasoning, so the cheapest vision-capable tier is the right default).
-- [lib/vision/extract-frames.ts](lib/vision/extract-frames.ts) samples 3 frames per clip (10%/50%/90% of duration) via ffmpeg. ffmpeg applies the container's rotation tag automatically when decoding to an image, so these come out upright even for the rotated phone/camera footage below — no manual correction needed here, unlike probe.ts.
-- A `VisualAnalysis` row (schema: `prisma/schema.prisma`) is stored per `MediaAsset`, one-to-one, parallel to `Transcript`.
-- Visual analysis is **not** a separate approval-gated pipeline stage — it runs automatically inside `runContentSelection` ([lib/selection/run.ts](lib/selection/run.ts)) when `ANTHROPIC_API_KEY` is set, best-effort. The user approves the resulting selection, not the visual analysis itself; this was a deliberate choice to keep manual steps from growing every time a capability is added.
-- [lib/selection/llm-selector.ts](lib/selection/llm-selector.ts) — `LlmContentSelector`, `claude-sonnet-5`. It does not see every candidate: it re-uses `HeuristicContentSelector` as a pre-filter (asking for ~4x the target duration) to keep the prompt bounded, then does the actual editorial judgment — order, diversity across sources, hook/body/payoff structure — over that shortlist. `runContentSelection`'s default selector auto-upgrades from heuristic to LLM based on whether the env var is set — same button in the UI either way.
-- [lib/editing/social-guidelines.ts](lib/editing/social-guidelines.ts) — short-form social video editing heuristics researched 2026-07-30 (hook within 1-3s, 15-20s or 45-60s ideal length avoiding a 30-40s drop-off zone, ~1.5-2.5s average cut frequency, diversity over reusing one source). These are aggregated creator/marketing-industry consensus, **not** Meta's own published algorithm data — treat as informed defaults for the prompt, not guarantees. Sources: [BrandGhost](https://blog.brandghost.ai/posts/instagram-reels-best-practices-for-creators/), [Fobet Media](https://fobetmedia.com/instagram-reel-hooks/), [OpusClip](https://www.opus.pro/blog/instagram-reels-hook-formulas), [Aibrify](https://aibrify.com/blog/short-form-video-editing-captions-b-roll-guide).
-
-**A real bug worth knowing if you touch the vision prompt again:** for clips where the 3 sampled frames show meaningfully different content (e.g. someone walking across a field), the model would describe each frame as its own separate JSON object instead of one summary of the whole clip — producing 2-3 concatenated JSON blocks that fail `JSON.parse`, and often exceeding the token budget before finishing. Fixed by being explicit in the prompt that multiple frames describe one continuous clip and asking for exactly one JSON object even when content changes across frames, plus defensive parsing in `claude-vision.ts` that extracts the first balanced-brace JSON object rather than trusting the whole response is valid on its own.
-
-**Still unverified:** the LLM selector's real editorial quality has only been checked on one real project (see below) — it produced a genuinely better sequence than the heuristic there, but that's one data point, not a validated pattern.
-
-**Conversational refinement** ([lib/selection/refine.ts](lib/selection/refine.ts) + [lib/selection/refine-plan.ts](lib/selection/refine-plan.ts)) makes the content-selection checkpoint iterative rather than one-shot: the user can type a Hebrew instruction against the currently active cut and get back a revised plan with a visible diff, without re-running selection from scratch. It reuses `Project.selectionShortlistJson` (the original candidate pool) so a turn costs one Anthropic call, and reuses `validatePlan`/`parsePlan` verbatim rather than inventing a diff format. Nothing touches the live `Selection` rows until the user explicitly applies a draft (`Project.refinementDraftJson`), and applying one — like any selection replacement — now resets the `CONTENT_SELECTION` checkpoint's `approved` flag, so the "three approval checkpoints, no blind runs" rule below still holds even though checkpoint #2 can now be revisited multiple times before being approved. Pure prompt/diff/reconstruction logic is split into `refine-plan.ts` (no Prisma/SDK import) specifically so it's unit-testable — vitest doesn't load `.env`, so any module importing `@/lib/db` at the top can't be tested at all. Design: `docs/superpowers/specs/2026-07-31-conversational-refinement-design.md` (main branch only — see "Where docs and code each live" in `Volt/Decisions and Open Questions.md`).
-
-**Note on this file's staleness (2026-07-31 audit):** the sections below (Planned Pipeline, Planned Agents, Premiere Integration) predate B-roll, per-segment vision, named story structures, multi-profile generation, and the refinement feature above. They're not wrong, just incomplete — check `Volt/Progress Log.md` (main branch) for the real shipped history before assuming this file is exhaustive.
-
-## Script layer — the story is written, not scored
-
-[lib/script/](lib/script) is the path where **what the video says** is decided by a writer instead of a scoring loop. It exists because every other quality problem turned out to be downstream of this one: the cut can have clean tracks, completed actions and matched picture and still be about nothing.
+The pipeline chooses **what is said** and **what is seen** separately.
 
 ```
-npm run script:brief -- "<project>"                          everything spoken, in one file
-npm run script:apply -- "<project>" <script.json> [--check]  validate, then persist
+ingest → transcription
+       → script      (lib/script/)     what is said, written by an agent
+       → audio spine (lib/selection/)  the story, from the spoken word alone
+       → shots       (lib/shots/)      every usable span, scored by ffmpeg, free
+       → picture     (lib/video/)      shots laid over the spine
+       → cut/export  (lib/cut/, lib/export/) → UXP panel or FCP7 XML
+       → manual polish in Premiere (color, mix, finish)
 ```
 
-**A script line *is* a `Selection` row**, deliberately — no new table, and the script path inherits the approval checkpoint, the picture-layer invalidation and the whole cut/export chain unchanged.
+**The script layer is the front door**, because every other quality problem turned out to be downstream of it: a cut can have clean tracks, completed actions and matched picture and still be about nothing.
 
-**The writing runs as a Claude Code agent** (`.claude/agents/script-writer.md`, reviewed by `script-critic.md`), not as an in-app LLM call, because the Anthropic balance is empty. The app's half of the deal is to hand over a complete brief and then to **refuse anything that comes back and does not check out**. `LlmContentSelector` stays in the tree, unused on this path, for whenever a key is funded.
-
-**`validateScript` rule 3 is the one that matters.** Every other rule catches a mistake; that one catches a *fabrication*. Each line's quoted text is compared against the transcript's own word timings, so a writer cannot put words in the speaker's mouth — the real voice plays over those frames and a "better" sentence would be a lie the audience hears. Proven on real data: quoting the mangled transcription `במחלקת סמכים מרפה` validates, while correcting it to what the speaker plainly meant, `במחלקת צמחי מרפא`, is rejected with both strings shown. **Tell a writer to quote the mangled form** — the audio is right even when the transcript is not.
-
-Word-level cutting is what makes this worth doing: all transcript segments carry word timings, so a line can be half a sentence. At whole-segment granularity this project's corpus offers only 26 building blocks and no room to craft.
-
-**Audio-only builds** (`placeAudioOnly` in `build-sequence.js`, checkbox on the pipeline screen, on by default) leave V1 empty on purpose. Picture is the loudest thing in a sequence — a weak line reads as a boring shot and a strong one gets credit for the footage — so stripping the image is the only way to hear whether the words hold up, which is the question this layer exists to answer.
-
-## Craft layer — two findings that only came from measuring
-
-[lib/craft/](lib/craft) is deterministic cleanup of the audio spine: filler words, silence gaps, micro-cut merging, bounds validation. Pure arithmetic over faster-whisper's word timings — no model call, no API key. `npm run craft:preview -- <project>` prints what it would remove without changing anything.
-
-**It removes nothing on this project's footage, and both reasons are architectural rather than bugs.** (1) Filler detection finds **0 hits across all 356 words** that carry timings, because faster-whisper normalises disfluencies as it transcribes — there is no `אהה` in the transcript even where the speaker said one. (2) Silence detection finds **0 gaps inside the spine**, because a selected moment's boundaries are *exactly* a transcript segment's boundaries and a whisper segment **is** a run of speech; the silence is what separates segments, and butt-joining already discards it. Measured across raw footage there are 16.7 reclaimable seconds; measured inside the spine the largest gap in any moment is 0.16s. Kept anyway because intra-segment pauses are real in interview and wedding footage, which is the stated next target — but don't present it as a working feature without re-measuring.
-
-Thresholds here are measured, not borrowed: gap lengths in this footage are sharply bimodal (≤0.58s or ≥1.17s, nothing between), so 0.7s is robust rather than tuned. Silence is trimmed to a 0.35s pad rather than excised, because whisper's word boundaries carry real slop — single short words are timed as long as 3.3s.
-
-**The picture layer used to be a metronome, and that was the real cause of "the cuts aren't smooth."** Before [lib/video/heuristic-layout.ts](lib/video/heuristic-layout.ts) was fixed, a real project got 21 placements of exactly 1.65s each, with only 3 of 21 cuts landing within 0.25s of a boundary in the spoken story. Three things now shape it, all free: cuts **snap to a spine boundary** within 0.5s; placement length is driven by the shot's measured `activity` and `movementCompleteness`; and the span budget is **recomputed from the time and shots actually left** each iteration — that last one is what makes varying the lengths safe, since a shot held long is paid for by its neighbours instead of by the end of the cut (drifting short exhausts the catalogue and leaves a black frame, which this planner has already produced once). Snapping is deliberately **not** applied on the LLM path: the model picks its boundaries for content reasons and moving them would fight it.
-
-**The picture layer used to throw away the exact thing it selected a shot for.** The catalogue grades a window on `movementCompleteness` — "ends settled rather than mid-movement" — and the trim then kept the **head** of that window. Measured on a real 19-placement cut: 18 of 19 placements trimmed, 30.1s discarded, and 11 shots graded ≥0.80 lost 16.5s of *their own endings*; one scored a perfect 1.00 and kept 38%, all of it lead-in. Of those 11, exactly **1** reached its ending. In plain language, which is how the user reported it: someone tilts a kettle and the tea never reaches the cup. [`resolveSourceWindow`](lib/video/layout-plan.ts) now anchors a completing shot to the **end** of its window and lets the trim eat the lead-in instead, ramping between head- and end-anchored across `movementCompleteness` 0.5→0.85 so nothing flips at a threshold. After: 1 → 11. `npm run measure:trim` prints this table for every project with a picture layer — reach for it before theorising about why a cut feels wrong.
-
-**A trap this planner sets repeatedly: a signal is measured, stored, used for one decision, and silently ignored by the decision that actually consumes it.** It has now caused two separate quality complaints. `movementCompleteness` scaled the *hold length* while the *trim position* ignored it. `isSyncFor` — "this shot is from the same clip, at the same source time, as the words being heard" — was computed in `lib/video/run.ts`, stored on every candidate, and **read only by the LLM prompt**; the heuristic planner, which is the one that runs without a funded key, never looked at it. When something reads badly on screen, check whether the relevant signal survives all the way to the frames that end up in the sequence.
-
-**Sound and picture are planned independently, and closing that gap is the live problem.** The spine comes from the transcript, the picture layer from ffmpeg metrics; nothing makes them agree. The heuristic planner now applies `SYNC_BONUS` (0.20, a judgement rather than a measurement — sized against `REUSE_PENALTY` 0.12) so a shot filmed while those words were spoken is preferred, capped by `MAX_SYNC_RUN` (2) because an unbroken run of sync is just the untouched take. Measured A/B on real footage: **1/14 placements in sync → 5/14, with diversity unchanged at 10 distinct source files.** It is not semantic matching — the heuristic cannot read, so "these words are about the garden, show the garden" still needs the model. `npm run coherence` prints the cut moment by moment as HEARD versus SEEN; use it before theorising about why a cut feels incoherent.
-
-**A key that cannot be billed is not the same state as no key.** `runVideoLayout` chose the free planner on `!ANTHROPIC_API_KEY`, so an empty balance produced a *failed stage* rather than a downgrade. The fallback is now on the error, and `VideoLayoutSummary.fellBackReason` records why, so a silent downgrade is impossible. The standing rule — every stage has a free path — only holds if reaching that path doesn't require predicting the failure in advance.
-
-## Planned Pipeline (MVP, PRD §9)
-
-```
-ingest → transcription → content selection (per brief) → rough cut → audio sync
-   → captions (pre-chosen font/style) → assembly → QC → export timeline (FCP7 XML)
-   → manual import to Premiere → manual polish (color, mix, finish)
+```bash
+npm run script:brief -- "<project>"                          # everything spoken, one file
+npm run script:apply -- "<project>" <script.json> [--check]  # validate, then persist
 ```
 
-Color and final finish are explicitly outside the automation boundary for this version.
+- **A script line *is* a `Selection` row** — no new table, and the path inherits the approval checkpoint, picture-layer invalidation and the whole export chain unchanged.
+- **`validateScript` rule 3 is the one that matters.** Quoted text is compared against the transcript's own word timings, so a writer cannot put words in the speaker's mouth — the real voice plays over those frames. **Tell a writer to quote the mangled transcription**, not the corrected phrase: the audio is right even when the transcript is not.
+- Word-level cutting is the point. At whole-segment granularity this corpus offers only 26 blocks and no room to craft.
+- **Audio-only builds** (`placeAudioOnly`, checkbox on the pipeline screen, on by default) leave V1 empty deliberately — picture is the loudest thing in a sequence, so stripping it is the only way to hear whether the words hold up.
 
-## Planned Agents (PRD §6)
+**Agents do the writing:** `script-writer` → `script-critic` (fresh context, never sees the writer's reasoning). Others: `cut-coherence`, `premiere-api`, `panel-check`, `red-first`, `shot-tuner`.
 
-Documentation only — none of these exist as files under `.claude/agents/` yet.
+**The expert layer (`lib/experts/`) is prose, not agents.** An expert appends guidance to a call that already runs — that is what reconciles "a crew of agents" with "stop burning tokens."
 
-| Agent | Stage | Responsibility |
-|---|---|---|
-| `ingest-agent` | ingest | Scan footage + audio folders, register media assets, run proxies |
-| `transcription-agent` | transcription | Hebrew speech-to-text, audio/video sync |
-| `content-selection-agent` | content selection | Pick takes/moments per a natural-language brief + transcript |
-| `cut-agent` | cut & pacing | Build rough sequence and pacing |
-| `audio-agent` | audio | Sync sources, basic cleanup — not final mix |
-| `captions-agent` | captions | Burned-in captions using a pre-chosen font/style, Hebrew RTL |
-| `assembly-agent` | assembly | Combine everything into one exportable timeline |
-| `qc-agent` | QC | Sanity checks — duration matches profile, no gaps/overlaps, sync OK |
-| `color-agent` | — | **Out of MVP.** Documented for a future stage only. |
-| `style-memory-agent` | — | Learns and stores recurring editing preferences over time (PRD §6.2) |
-| `broll-agent` | — | Detects missing B-roll/coverage and suggests a replacement |
+## Recurring failure patterns
 
-## `.claude/`
+Both have caused user-visible quality complaints more than once. Check for them before theorising.
 
-Project-specific customizations live here:
+1. **A signal measured, stored, then ignored by the decision that consumes it.** `movementCompleteness` scaled hold length while the trim ignored it (the pour that never reached the cup: 11 shots graded ≥0.80 lost 16.5s of *their own endings*). `isSyncFor` was read by the LLM prompt but not by the heuristic planner that actually runs. When something reads badly on screen, verify the signal survives all the way to the frames that ship.
+2. **State that outlives what it describes.** `VideoPlacement` rows are absolute positions on a timeline of a particular length. A 34.75s picture layer once survived a re-selection down to a 20.3s spine, leaving 14.45s of picture past the end of the audio.
 
-- `.claude/agents/` — subagent definitions
-- `.claude/skills/` — project skills
-- `.claude/commands/` — slash commands
+Diagnostics, all free: `npm run coherence` (HEARD vs SEEN per moment), `npm run measure:trim`, `npm run craft:preview`.
 
-All three are currently empty placeholders (`.gitkeep` only) and will be filled in as the pipeline is built, one agent at a time.
+## Premiere / UXP
 
-## Premiere Integration
+Panel at [premiere-panel/](premiere-panel/) — deliberately **not** under `lib/`; it has its own manifest and runtime. Load instructions: `premiere-panel/README.md`. Verify with `npm run panel:sim` (20 scenarios) and `npm run panel:preview` (browser, real `index.html` + UXP stub).
 
-- **Stage 1 (current target):** the system produces an FCP7 XML timeline file; the user imports it into Premiere manually and polishes from there.
-- **Stage 2 (implemented, not yet loaded into real Premiere):** a UXP panel inside Premiere for live interaction — no manual export/import round-trip. Lives at repo-root [premiere-panel/](premiere-panel/) (**not** under `lib/` — a UXP plugin has its own manifest/runtime and isn't Next.js code, so nesting it in `lib/` would invite Next's build to treat it as app code). It fetches an approved `CutTimeline` from the local app over HTTP (`/api/projects`, `/api/projects/[id]/timeline`, expects the app on **port 3002**) and builds it into a new sequence. Load instructions: `premiere-panel/README.md`.
-  - **Every timeline write must go through `project.lockedAccess(() => project.executeTransaction(...))`** — that's the API's requirement, and it also makes a whole build one undo step.
-  - **UXP has no audio-transition API.** Verified against the real `@adobe/premierepro` v26.3.0 `.d.ts` (via `npm pack`): `TransitionFactory` covers video only; there is no audio equivalent. **The FCP7 XML path remains the only way to get a true `KGAudioTransCrossFade3dB` crossfade.**
-  - **Confirmed in real Premiere (2026-08-03):** the park-and-sweep approach works. A real build reported `Removed 21 parked item(s) from 2 unused track(s)` and `Final layout — V1: 14 clip(s) · A1: 7 clip(s)` — one picture track, one soundtrack, nothing left behind. That closes the question the sim could only answer for bookkeeping.
-  - **The real audio component chain on a plain audio clip is two entries**, both fixed effects, observed in that same run: `0: Volume / Internal Volume Stereo` and `1: Channel Volume / Internal Channel Volume Stereo`. There is no third-party effect to skip past, and `Volume` (index 0) is the one to keyframe.
-  - **Volume automation was tried and reverted (2026-08-03). Do not retry it without reading this.** A 40ms ramp at each end of every audio clip made the cut audibly *worse* and was removed the same day: the user's words were that it damaged the audio, boosting some speech and ducking other parts. **The cause is the fact worth keeping — keyframe positions are `sequence`-relative, not clip-relative.** The code wrote each clip's ramp at 0…clipDuration expecting clip-local time, so all of them piled up near the start of the timeline and the rest of the cut held whatever value the last keyframe left. `AudioClipTrackItem` offers `getStartTime()` (sequence-relative) and `getInPoint()` (source-relative), and nothing in the `.d.ts` or Adobe's reference says which domain a component param's keyframes use; this was the one assumption the sim could not check, and it was wrong. Two other facts were bought with real builds and are worth keeping: a param's value is **not** a bare number (`Keyframe.value` is documented as `{ value: … }` and the level arrives wrapped), and the level scale is **neither dB nor unity-normalised** — an untouched clip reads `0.17782793939113617`, i.e. `10^(-15/20)`, linear amplitude gain on a scale where 1.0 is Premiere's own +15dB maximum boost. **Hard audio cuts are the correct behaviour until the user asks otherwise.**
-  - **UXP has no Unlink command either, and that shapes the whole build.** Verified the same way — no `unlink`, `link` or `setLinked` anywhere in the 4,675-line `.d.ts`. `createOverwriteItemAction` always places **both** halves of a clip, so the only way to put one source's picture over another's sound is to park the unwanted halves on tracks nobody reads and then delete them: the panel doing by hand what a human would do with Unlink + Delete.
-  - **Two rules make that sweep survive contact with real footage**, and both were learned from junk left on a user's timeline. (1) **Sweep by read-back, never by fixed track index** — a source with N audio channels can occupy N tracks, so a placement lands wherever it lands; `trackCounts()` reads what is actually there and everything outside the kept set goes. (2) **Re-fetch every handle per track.** A transaction invalidates script objects read before it, so gathering sequence/editor/track handles once up front means the first track clears and the second throws `"The script object is no longer valid."` — which aborted the rest of the cleanup and is exactly what left a timeline holding two pictures and two soundtracks per moment.
-  - **Two things invalidate a picture layer, and both must actually delete it.** `VideoPlacement` rows are absolute positions on a timeline of a particular length, so they are meaningless once that length changes. `lib/shots/run.ts` clears them when window boundaries move; `persistSelection` ([lib/selection/run.ts](lib/selection/run.ts)) now clears them when the spine is replaced. It did not, and the result was measured on a real project: a 34.75s picture layer survived a re-selection down to a 20.3s spine, leaving **14.45s of picture running past the end of the audio** and 8 shots starting after the cut had finished speaking. The panel says so rather than hiding the block, because falling back to each moment's own picture is a visible change to the cut.
-  - `premiere-panel/_sim.js` (`npm run panel:sim`) is a fake Premiere that runs `build-sequence.js` outside UXP and asserts the final track layout across 18 scenarios (1/2/4 audio channels × both handle-lifetime models × three plan shapes). It exists because the panel could otherwise only be tested by hand inside Premiere — the code above passes all 18, the version before it failed 12. It models bookkeeping only: **passing it is not evidence the cut looks right in Premiere**, which remains the user's own check.
-  - **Before trusting any of it green, disable the feature and watch it go red.** The sim has produced a false green three times: once by modelling Premiere too charitably, and twice because a find-and-replace patch silently matched nothing and the run therefore proved only that the code still ran. Assert that an automated edit changed the text before believing the result — a find-and-replace whose pattern misses reports nothing at all.
-  - `npm run panel:preview` renders the panel in an ordinary browser by copying the **real** `index.html` and injecting `_stub.js` (the UXP stub) ahead of `index.js` — see [scripts/build-panel-harness.mjs](scripts/build-panel-harness.mjs). It replaced a hand-maintained `_harness.html` whose own comment claimed it was built from `index.html` "so it cannot drift out of date"; it was a duplicate of the whole body, it had drifted, and it reported that a newly added element did not exist. **A verification tool that can disagree with the thing it verifies is worse than none** — if the harness ever needs its own copy of anything from `index.html`, that is the bug.
-  - Ground UXP API calls against [AdobeDocs/uxp-premiere-pro-samples](https://github.com/AdobeDocs/uxp-premiere-pro-samples) and the `.d.ts`, not memory — guessed signatures were wrong twice (`createSetInOutPointsAction` is one call not two; `ProjectItem` needs `ppro.ClipProjectItem.cast()` before in/out points).
-- **Stage 3 (future, not committed):** a read-back layer so the system also sees manual changes the user made, not just push changes to Premiere.
+**Before writing any UXP call, use the `premiere-api` agent.** Guessed signatures have been wrong repeatedly. The API's hard facts:
 
-Stage 1 is **implemented**: [lib/export/fcp7.ts](lib/export/fcp7.ts) writes xmeml v5 into `./exports` (gitignored). Two things to know before touching it: everything in that format is measured in **frames**, so all timing goes through the sequence frame rate (getting it wrong yields an XML that imports but drifts out of sync), and each source `<file>` must be defined in full exactly **once** anywhere in the document and referenced by id thereafter — an audio-only source is defined on the audio track, so the definition cannot be hardcoded to the video branch.
+- Every timeline write goes through `project.lockedAccess(() => project.executeTransaction(...))` — required, and it makes a build one undo step.
+- **No Unlink, no link, no setLinked** anywhere in the 4,675-line `.d.ts`. `createOverwriteItemAction` always places both halves, so the panel parks unwanted halves and sweeps them. Sweep **by read-back, never by fixed index** (an N-channel source occupies N tracks) and **re-fetch every handle per track** (a transaction invalidates objects read before it → `"The script object is no longer valid."`).
+- **No audio-transition API** — FCP7 XML remains the only route to a real crossfade.
+- **Volume automation was tried and reverted.** Do not retry without reading `Volt/Tech Stack.md`: **keyframe positions are sequence-relative, not clip-relative**, so clip-local ramps piled up at the start of the timeline and damaged the audio. **Hard audio cuts are correct until the user asks otherwise.**
 
-The generated XML is verified well-formed with correct frame math and no dangling file references, but **has not yet been test-imported into a real Premiere install** — that is still the open half of decision #2.
+FCP7 export ([lib/export/fcp7.ts](lib/export/fcp7.ts)): everything is measured in **frames** via the sequence rate, and each `<file>` is defined in full exactly **once** anywhere in the document, then referenced by id.
+
+## Token discipline
+
+Sessions here run long and compact repeatedly, so reading cost compounds.
+
+- **Never read `Volt/Progress Log.md` whole** (~120KB). Grep it, or read a dated section. Same for `Volt/Decisions and Open Questions.md` (~28KB) and `docs/PRD.md`.
+- **Never grep or read `lib/generated/prisma/`** — ~20k lines of generated client. It is gitignored; regenerate with `npx prisma generate`.
+- Prefer `grep -c` / heading listings over full reads when checking whether a fact is already recorded.
+- Put new war stories in Volt and a one-line rule here. If this file grows past ~10KB, that is the bug.
