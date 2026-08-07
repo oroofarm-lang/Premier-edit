@@ -13,6 +13,26 @@ Part of [[Premier Edit]]. Newest entry on top.
 
 Older entries: [[Progress Log 2026-07]] (scaffold through 2026-07-31).
 
+## 2026-08-07 — Three directions, and a continuous run nobody saw whole
+
+The user accepted v3's craft and rejected its *choice*: *"החיתוכים טובים יותר, הבניית הסיפור היא טובה, חוץ מהתוכן בפנים שאני פחות אהבתי… אם היינו בוחרים ללכת על הסיפור הזה, אז זה בסדר גמור."* That is not a quality complaint, it is a **choice** complaint — and it means the story should come from the content agents, not from me. *"אנחנו צריכים לעבוד עם הסוכנים שלנו של התוכן."*
+
+So `script-writer` was asked for **three genuinely different directions** rather than one script, and `script-critic` judged them in clean context. Both ran on the guidance rewritten earlier today.
+
+- **A** — the Negev fact as the *ending*, 3 lines / 2 cuts / 32.9s. The writer's own pick, on the argument that the one thing people don't know belongs in the hook or the close, never the middle (where v3 had put it).
+- **B** — a recipe that counts to four, 4 lines / 3 cuts / 19.3s.
+- **C** — two people naming plants with zero explanation, ending on `זאתר הבננה`.
+
+**The critic ranked B → A → C and disagreed with the writer**, which is the point of giving it fresh context. Its findings were concrete, not stylistic: A's 16.75s middle line opens on an audible three-fold stumble (`יש לנו כמה צמחים, כמה צמחים של צמחים מרפא`) and trails off on a comma so the brew is never named; B's 9.28s opening violates the brief's hard `<3s` first-moment rule by 3× and hides a **3.3s stall inside `ונלך`** at seconds 4–7; B's `זה הרכב השני` → `וזה אלוויזה` corrupts the very count the direction is built on.
+
+On C it refused the ending outright, and the reasoning is worth keeping: the brief's rule *"אל תפסול רגע בגלל מילה אחת מוזרה"* protects good material from being discarded over a mistranscription — **it is not a license to build a payoff on one.** `זאתר הבננה` is a question echoed back; it is a punchline only if the phrase is real, the visual corroboration route is unavailable because C declines to lean on picture, and the exposure is total since every other line is just a plant name.
+
+**The finding that matters most, and none of the three writers saw it:** in clip `0X7A1694`, the span **1.04–13.86 is one continuous run of speech** — question → the viewer's own question → the four names → pour → accept. 12.8s, **one cut**, and it is the user's brief almost verbatim. A took 4.38–6.12 and B took 6.12–12.78: *each grabbed one half of the same unbroken take.* v3 had used it too, but split around the Negev sentence rather than whole. A single clip contained the ceremony the whole search was for.
+
+Also flagged as unused by all three: `הרכיב הראשון, מרווה` (`0X7A1692`, 2.42s) — the cleanest short concrete line in the corpus, and the direct repair of the `הרכיב הראשון,` failure already recorded here.
+
+**Tooling that came out of this round:** `npm run render:spine -- "<project>" --script <file>` renders a candidate straight from its JSON. Until now, auditioning an option meant *applying* it — a database write that also cleared the picture layer — to listen to something that might be rejected. Choosing between stories is the user's call, so hearing three of them must not cost three writes.
+
 ## 2026-08-07 — "המילים פשוט לא מתחברות": word-level cutting was the wrong default
 
 The user listened and rejected the whole thing: **"כל התוכן של האודיו נוראי… המילים פשוט לא מתחברות"**. They restated the requirement plainly — a story with a beginning, middle and end; **פחות חיתוכים**; and *"לא אכפת לי שיש רגעים של שקט"*. Two causes, both mine, and the second one is the important one.
