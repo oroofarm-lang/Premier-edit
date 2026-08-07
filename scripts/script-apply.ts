@@ -33,7 +33,14 @@ import type { CraftWord, Removal } from "@/lib/craft/types";
 async function main() {
   const args = process.argv.slice(2);
   const checkOnly = args.includes("--check");
-  const [query, scriptPath] = args.filter((a) => a !== "--check");
+  // Off by default, and that is a decision from the user's own ear: they do not
+  // mind pauses ("לא אכפת לי שיש רגעים של שקט"), and every removal adds a cut
+  // to a cut they want *fewer* cuts in. Splicing dead air is a polish step, not
+  // a default — coherent speech comes first.
+  const trimSilence = args.includes("--trim-silence");
+  const [query, scriptPath] = args.filter(
+    (a) => a !== "--check" && a !== "--trim-silence",
+  );
   if (!query || !scriptPath) {
     console.error(
       'Usage: npm run script:apply -- "<project name or id>" <script.json> [--check]',
@@ -111,11 +118,16 @@ async function main() {
   // full second of silence. Measured on this footage — see lib/craft/quiet.ts.
   const pathByAssetId = Object.fromEntries(assets.map((a) => [a.id, a.filePath]));
   const measuredQuietByOrder: Record<number, Removal[]> = {};
-  for (const line of result.lines) {
+  for (const line of trimSilence ? result.lines : []) {
     const filePath = pathByAssetId[line.mediaAssetId];
     if (!filePath) continue;
     try {
-      const quiet = await measureQuietRemovals(filePath, line.startSec, line.endSec);
+      const quiet = await measureQuietRemovals(
+        filePath,
+        line.startSec,
+        line.endSec,
+        wordsByAssetId[line.mediaAssetId] ?? [],
+      );
       if (quiet.length > 0) measuredQuietByOrder[line.order] = quiet;
     } catch (err) {
       // Footage can be moved after ingest. A failed measurement must not block

@@ -55,6 +55,32 @@ export const MIN_QUIET_SEC = 0.35;
 
 export type QuietRegion = { startSec: number; endSec: number };
 
+/** A word's span, for the overlap guard below. */
+export type SpokenWord = { startSec: number; endSec: number };
+
+/**
+ * Drops any quiet region that overlaps a transcribed word.
+ *
+ * **Quiet is not the same as "no speech", and assuming so cut a word in half.**
+ * The word `בא` is timed 1.66–2.18s and measures −39dB across 1.71–1.99s,
+ * because a stop consonant's closure *is* silence — the mouth is shut before
+ * the burst. Removing that span left "נמרוד, ..." followed by "לך על כוס תה?",
+ * which is broken Hebrew, and it shipped to the user.
+ *
+ * The level check alone cannot catch this: the span really is quiet. Only the
+ * transcript knows a word is standing there. So the two signals are used for
+ * what each is actually good for — ffmpeg decides *where it is quiet*, the
+ * transcript decides *where it is allowed to cut*.
+ */
+export function rejectRegionsOverlappingWords(
+  regions: QuietRegion[],
+  words: SpokenWord[],
+): QuietRegion[] {
+  return regions.filter(
+    (r) => !words.some((w) => w.startSec < r.endSec && w.endSec > r.startSec),
+  );
+}
+
 /**
  * Pulls silence regions out of ffmpeg's `silencedetect` stderr.
  *

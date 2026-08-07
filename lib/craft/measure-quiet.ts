@@ -1,7 +1,13 @@
 import { spawn } from "node:child_process";
 import ffmpegPath from "ffmpeg-static";
-import { parseSilenceRegions, planQuietRemovals, QUIET_NOISE_DB, MIN_QUIET_SEC } from "./quiet";
-import type { Removal } from "./types";
+import {
+  parseSilenceRegions,
+  planQuietRemovals,
+  rejectRegionsOverlappingWords,
+  QUIET_NOISE_DB,
+  MIN_QUIET_SEC,
+} from "./quiet";
+import type { CraftWord, Removal } from "./types";
 
 /**
  * The I/O half of energy-based dead-air detection: runs ffmpeg over one span
@@ -51,6 +57,7 @@ export async function measureQuietRemovals(
   filePath: string,
   startSec: number,
   endSec: number,
+  words: CraftWord[] = [],
   noiseDb = QUIET_NOISE_DB,
   minQuietSec = MIN_QUIET_SEC,
 ): Promise<Removal[]> {
@@ -72,5 +79,10 @@ export async function measureQuietRemovals(
     endSec: r.endSec + startSec,
   }));
 
-  return planQuietRemovals(absolute, startSec, endSec, minQuietSec);
+  // ffmpeg says where it is quiet; the transcript says where cutting is allowed.
+  // Without this guard a stop consonant's silent closure reads as dead air and
+  // the word gets cut in half.
+  const safe = rejectRegionsOverlappingWords(absolute, words);
+
+  return planQuietRemovals(safe, startSec, endSec, minQuietSec);
 }

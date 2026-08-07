@@ -1,5 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { parseSilenceRegions, planQuietRemovals, QUIET_PAD_SEC } from "./quiet";
+import {
+  parseSilenceRegions,
+  planQuietRemovals,
+  QUIET_PAD_SEC,
+  rejectRegionsOverlappingWords,
+} from "./quiet";
+
+describe("rejectRegionsOverlappingWords", () => {
+  it("refuses to cut inside a word, however quiet the span measures", () => {
+    // The real regression: `בא` is timed 1.66-2.18 and measures -39dB across
+    // 1.71-1.99 because a stop consonant's closure is silence. Cutting it left
+    // "נמרוד," + "לך על כוס תה?" — broken Hebrew that reached the user.
+    const words = [{ startSec: 1.66, endSec: 2.18 }];
+    expect(rejectRegionsOverlappingWords([{ startSec: 1.71, endSec: 1.99 }], words)).toEqual([]);
+  });
+
+  it("keeps a region that sits in the gap between two words", () => {
+    const words = [
+      { startSec: 1.0, endSec: 1.5 },
+      { startSec: 3.0, endSec: 3.5 },
+    ];
+    const gap = [{ startSec: 1.6, endSec: 2.9 }];
+    expect(rejectRegionsOverlappingWords(gap, words)).toEqual(gap);
+  });
+
+  it("rejects a region that merely clips a word's edge", () => {
+    const words = [{ startSec: 2.0, endSec: 2.5 }];
+    expect(rejectRegionsOverlappingWords([{ startSec: 1.0, endSec: 2.1 }], words)).toEqual([]);
+  });
+});
 
 /** A realistic chunk of ffmpeg silencedetect stderr. */
 const FFMPEG_STDERR = `
