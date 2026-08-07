@@ -78,7 +78,7 @@ npm run script:apply -- "<project>" <script.json> [--check]  # validate, then pe
 
 ## Recurring failure patterns
 
-Both have caused user-visible quality complaints more than once. Check for them before theorising.
+All three have caused user-visible quality complaints more than once. Check for them before theorising.
 
 1. **A signal measured, stored, then ignored by the decision that consumes it.** `movementCompleteness` scaled hold length while the trim ignored it (the pour that never reached the cup: 11 shots graded ≥0.80 lost 16.5s of *their own endings*). `isSyncFor` was read by the LLM prompt but not by the heuristic planner that actually runs. When something reads badly on screen, verify the signal survives all the way to the frames that ship.
 2. **State that outlives what it describes.** `VideoPlacement` rows are absolute positions on a timeline of a particular length. A 34.75s picture layer once survived a re-selection down to a 20.3s spine, leaving 14.45s of picture past the end of the audio.
