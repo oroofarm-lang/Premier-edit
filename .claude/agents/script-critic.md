@@ -1,6 +1,6 @@
 ---
 name: script-critic
-description: Use after script-writer produces a script, before it is applied. Reads the brief and the script — never the writer's reasoning — and judges whether the story actually works for the platform it targets. Reports findings, makes no edits. Costs nothing beyond the session; no Anthropic API key involved.
+description: Use after script-writer produces a script, before it is applied. Judges whether the story works for its platform; reports findings, makes no edits.
 tools: Read, Glob, Grep, Bash
 model: inherit
 ---

@@ -1,6 +1,6 @@
 ---
 name: premiere-api
-description: Use BEFORE writing or changing any code in premiere-panel/ that calls the premierepro UXP API. Verifies the real method signature, argument types and casting rules against the shipped type definitions instead of guessing. This project has been burned repeatedly by plausible-looking API guesses.
+description: Use BEFORE writing or changing any premiere-panel/ code that calls the premierepro UXP API. Verifies signatures and casting rules against the shipped .d.ts instead of guessing.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---

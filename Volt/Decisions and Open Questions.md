@@ -13,6 +13,11 @@ Part of [[Premier Edit]]. Living log — update as questions get resolved instea
 
 ## Resolved
 
+> [!success] Token discipline → `CLAUDE.md` is an index, the vault is the archive
+> Decided 2026-08-07 after measuring where tokens actually go. `CLAUDE.md` had grown to **33KB (~9.5k tokens)** on `stage2-panel` — and it is injected at every session start *and* re-injected after every compaction, so a long session was spending 40k+ tokens re-reading its own project notes. Every hard-won finding was being carried as full narrative (measured numbers, what happened, why) where a one-line rule plus a pointer would change behaviour identically. Rewritten to 9.7KB: rules that change what gets typed, stated as rules; the stories moved to [[Tech Stack]] (a new *Build and runtime traps* section) and [[Progress Log]]. Verified fact-by-fact that nothing was lost before cutting. Also split July out of the 121KB [[Progress Log]] into [[Progress Log 2026-07]], and trimmed the seven agent `description:` lines from 365 to 182 words — those are injected into every system prompt too, and five of them repeated "costs nothing, no API key," which does nothing for triggering.
+>
+> **The counter-intuitive part, worth keeping:** deleting source files saves nothing. Token cost comes from what is *auto-injected* (`CLAUDE.md`, agent descriptions) and from what gets *read* (the big vault files), not from what sits on disk. `CLAUDE.md` now carries a *Token discipline* section naming the files never to read whole, and the rule that if it passes ~10KB again, that is the bug.
+
 > [!success] Timeline export format → FCP7 XML
 > Premiere Pro has native File→Import support for FCP7 XML, going back many versions, no plugin required. OTIO has no native Premiere import path — it needs a third-party panel/adapter. Revisit once a real sample file gets test-imported into the actual Premiere version in use.
 

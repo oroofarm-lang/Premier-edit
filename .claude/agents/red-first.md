@@ -1,6 +1,6 @@
 ---
 name: red-first
-description: Use after writing tests for a bug fix, before claiming the fix is verified. Reverts the fix in a scratch copy and confirms the new tests actually go red, so a test that would pass against the broken code is caught rather than trusted. Costs nothing — runs the project's own vitest suite.
+description: Use after writing tests for a bug fix, before calling it verified. Reverts the fix in a scratch copy and confirms the new tests actually go red.
 tools: Read, Grep, Glob, Bash, Edit
 model: sonnet
 ---

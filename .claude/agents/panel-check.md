@@ -1,6 +1,6 @@
 ---
 name: panel-check
-description: Use after changing premiere-panel/ markup, styles or rendering code, to confirm the change actually appears. Renders the panel in a browser through its UXP-stubbing harness and reports what is really in the DOM. Does not replace the user's own check inside Premiere.
+description: Use after changing premiere-panel/ markup, styles or rendering code, to confirm the change actually reaches the DOM.
 tools: Read, Grep, Glob, Bash, mcp__Claude_Browser__navigate, mcp__Claude_Browser__javascript_tool, mcp__Claude_Browser__computer, mcp__Claude_Browser__read_page, mcp__Claude_Browser__tabs_context, mcp__Claude_Browser__tabs_select, mcp__Claude_Browser__resize_window
 model: sonnet
 ---

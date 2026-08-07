@@ -26,6 +26,24 @@ Part of [[Premier Edit]].
 >
 > Fix already applied in the repo: `components.json` pinned to `"base": "radix"`, colors in `app/globals.css` stored as raw decomposed OKLCH components (`--ring: 0.708 0 0;`) with `tailwind.config.ts` wrapping them as `oklch(var(--x) / <alpha-value>)` so opacity modifiers (`bg-primary/80`) work under v3.
 
+## Build and runtime traps
+
+These four break things silently rather than loudly, and each cost a debugging session. Kept here rather than in `CLAUDE.md` so that file stays a short index — see [[Decisions and Open Questions]] on token discipline.
+
+> [!bug] ffmpeg/ffprobe must stay external to the Next bundle
+> `ffmpeg-static` and `@ffprobe-installer/ffprobe` ship native binaries and non-JS files, so they must remain listed in `next.config.mjs` under `experimental.serverComponentsExternalPackages`. Bundling them fails the build.
+
+> [!bug] A relative `DATABASE_URL` resolves against the importing bundle, not the repo root
+> `file:./dev.db` works from a server action (bundled near the root, finds `prisma/dev.db`) and silently **creates a fresh empty database** from a route handler (bundled into `.next/server/app/api/<route>/`). Every query then fails with `table \`main.Project\` does not exist` (P2021) while `prisma/dev.db` sits fine on disk. `lib/db.ts` now resolves the URL against `process.cwd()` first. If P2021 ever appears on a route that works from a page, check which file the process actually opened — `lsof -p <pid> | grep '\.db'`. The error names the table, not the wrong file.
+
+> [!bug] The vision model describes each frame separately unless told not to
+> Three frames sampled from one clip produced 2–3 concatenated JSON objects that failed `JSON.parse`, often after blowing the token budget. Two fixes, both needed: the prompt states explicitly that multiple frames describe *one continuous clip* and asks for exactly one object even when content changes across them, and `lib/vision/claude-vision.ts` extracts the first balanced-brace object rather than trusting the whole response to be valid.
+
+> [!bug] Splitting a run of speech at word boundaries is not a cut
+> `CONTIGUOUS_JOIN_SEC` (0.05s) in `lib/script/validate.ts` warns when two consecutive script lines come from the same clip with no audible gap. A critic reading a real script found 7 of 14 joins were the same take resuming exactly where it stopped, so a "15 line" cut was **8 moments** to a listener, with one 9.5s unbroken take inside it. Every line validated individually — the fault is in the *seam*, which no per-line rule can see. The validator now reproduces that count as arithmetic so a critic does not have to notice it.
+
+Tuning constants worth knowing before changing them: `SYNC_BONUS` 0.20 (a judgement, sized against `REUSE_PENALTY` 0.12) and `MAX_SYNC_RUN` 2, both in `lib/video/heuristic-layout.ts` — an unbroken run of sync is just the untouched take.
+
 ## Prisma specifics
 
 - Import `PrismaClient` from `@/lib/generated/prisma/client` (enums from `.../enums`), **not** `@prisma/client` — the schema uses the newer `prisma-client` generator with a custom output path, and there is no barrel `index.ts`, so the bare folder path fails to resolve.

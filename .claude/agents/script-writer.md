@@ -1,6 +1,6 @@
 ---
 name: script-writer
-description: Use when a Premier Edit project needs its story written — after transcription, before the cut is built. Reads a generated brief containing everything that was said, and writes a script: which words are heard, in what order. Costs nothing beyond the session — no Anthropic API key involved. Dispatched with the brief path; not meant to be run blind.
+description: Use when a project needs its story written — after transcription, before the cut. Reads a generated brief and writes which words are heard, in what order. Dispatch with the brief path.
 tools: Read, Write, Glob, Grep, Bash
 model: inherit
 ---

@@ -1,6 +1,6 @@
 ---
 name: shot-tuner
-description: Use when the shot catalogue is picking the wrong moments, or after changing anything in lib/shots/. Runs the deterministic analyser over real footage and reports the score distribution so thresholds can be tuned against numbers instead of intuition. Costs nothing to run — no API key, no model call.
+description: Use when the shot catalogue picks the wrong moments, or after changing lib/shots/. Reports the score distribution so thresholds are tuned against numbers.
 tools: Read, Grep, Glob, Bash, Edit
 model: sonnet
 ---

@@ -1,6 +1,6 @@
 ---
 name: cut-coherence
-description: Use when the cut "doesn't feel right" but the reason is not obvious, or after changing anything in lib/video/, lib/selection/ or lib/shots/. Reads a built cut out of the database and reports where the picture matches what is being said and where it does not. Costs nothing — no API key, no model call. Does not replace watching the cut in Premiere.
+description: Use when a cut "doesn't feel right" for no obvious reason, or after changing lib/video/, lib/selection/ or lib/shots/. Reports where the picture matches what is being said.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
