@@ -1,12 +1,15 @@
 import "dotenv/config";
+import { basename } from "node:path";
 import { readFile } from "node:fs/promises";
 import { prisma } from "@/lib/db";
 import { persistSelection } from "@/lib/selection/run";
 import { PROFILE_TARGET_SECONDS } from "@/lib/selection/types";
-import type { SelectedSegment } from "@/lib/selection/types";
+import { applyCraftCleanup } from "@/lib/script/craft-cleanup";
+import { measureQuietRemovals } from "@/lib/craft/measure-quiet";
 import { toScriptSources } from "@/lib/script/sources";
 import { validateScript } from "@/lib/script/validate";
 import type { Script } from "@/lib/script/types";
+import type { CraftWord, Removal } from "@/lib/craft/types";
 
 /**
  * Applies a written script to a project: validate first, persist only if every
@@ -88,35 +91,75 @@ async function main() {
     process.exit(1);
   }
 
+  // Deterministic craft pass: splices out any real interior pause inside a
+  // line's own take (faster-whisper's word timings are already in `sources`,
+  // so this costs nothing extra). `planCleanup` has existed since the old
+  // heuristic pipeline but was only ever wired into `craft:preview` — this is
+  // the first caller that actually persists what it finds.
+  const fileNameByAssetId = Object.fromEntries(
+    assets.map((a) => [a.id, basename(a.filePath)]),
+  );
+  const wordsByAssetId: Record<string, CraftWord[]> = Object.fromEntries(
+    sources.map((s) => [s.mediaAssetId, s.words]),
+  );
+  const durationByAssetId = Object.fromEntries(
+    assets.map((a) => [a.id, a.durationSec]),
+  );
+  // Measure each line's own audio. This is the check that word timings cannot
+  // do: faster-whisper absorbs a pause into a neighbouring word's span rather
+  // than reporting a gap, so a line can read as continuous speech and carry a
+  // full second of silence. Measured on this footage — see lib/craft/quiet.ts.
+  const pathByAssetId = Object.fromEntries(assets.map((a) => [a.id, a.filePath]));
+  const measuredQuietByOrder: Record<number, Removal[]> = {};
+  for (const line of result.lines) {
+    const filePath = pathByAssetId[line.mediaAssetId];
+    if (!filePath) continue;
+    try {
+      const quiet = await measureQuietRemovals(filePath, line.startSec, line.endSec);
+      if (quiet.length > 0) measuredQuietByOrder[line.order] = quiet;
+    } catch (err) {
+      // Footage can be moved after ingest. A failed measurement must not block
+      // the apply — it only means this line keeps whatever quiet it has.
+      console.warn(
+        `  warning (line ${line.order}): could not measure audio ` +
+          `(${err instanceof Error ? err.message : err}).`,
+      );
+    }
+  }
+
+  const cleaned = applyCraftCleanup(
+    result.lines,
+    fileNameByAssetId,
+    wordsByAssetId,
+    durationByAssetId,
+    measuredQuietByOrder,
+  );
+
+  for (const warning of cleaned.warnings) console.warn(`  craft: ${warning}`);
+  if (cleaned.removalsCount > 0) {
+    console.log(
+      `\nCraft cleanup: removed ${cleaned.removalsCount} interior pause(s), ` +
+        `-${cleaned.secondsRemoved}s (${result.lines.length} line(s) -> ` +
+        `${cleaned.selections.length} moment(s)).`,
+    );
+  }
+
   if (checkOnly) {
     console.log(
-      `Valid: ${result.lines.length} line(s), ${result.totalDurationSec}s against a ` +
+      `\nValid: ${result.lines.length} line(s), ${result.totalDurationSec}s against a ` +
         `${targetDurationSec}s target. Nothing written (--check).`,
     );
     await prisma.$disconnect();
     return;
   }
 
-  // A script line and a Selection row are the same thing — see lib/script/types.ts
-  // — so this is a rename, not a translation. Score is null: a written line has
-  // an argued reason, not a computed one, and inventing a number would make
-  // editorial judgement look like measurement.
-  const selections: SelectedSegment[] = result.lines.map((line) => ({
-    mediaAssetId: line.mediaAssetId,
-    startSec: line.startSec,
-    endSec: line.endSec,
-    order: line.order,
-    score: 0,
-    reason: line.reason,
-  }));
-
   await persistSelection(project.id, project.outputProfile, {
-    selections,
+    selections: cleaned.selections,
     premise: script.premise,
     beatPlan: script.beats,
   });
 
-  console.log(`Applied ${selections.length} line(s) to ${project.name}.`);
+  console.log(`\nApplied ${cleaned.selections.length} moment(s) to ${project.name}.`);
   console.log(`  ${result.totalDurationSec}s against a ${targetDurationSec}s target`);
   console.log(`  premise: ${script.premise}`);
   console.log(

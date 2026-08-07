@@ -36,6 +36,27 @@ export type CleanupOptions = {
   durationByAssetId?: Record<string, number | null>;
   removeSilence?: boolean;
   removeFillers?: boolean;
+  /**
+   * Removals measured from the audio itself rather than from word timings,
+   * keyed by the moment's `order`. See `quiet.ts` — word timings cannot see a
+   * pause that faster-whisper absorbed into a word's own span, and that is the
+   * defect that actually reached the user's ear. Merged with everything else,
+   * so the fragment and overlap rules below apply to these identically.
+   */
+  measuredQuietByOrder?: Record<number, Removal[]>;
+  /**
+   * Shortest surviving fragment to keep, in seconds. Defaults to
+   * `MIN_FRAGMENT_SEC` (0.7), which is a *picture* floor — it matches
+   * `MIN_PLACEMENT_SEC` so a shot is never on screen for a flicker.
+   *
+   * The audio spine needs a much smaller one, and getting this wrong deleted
+   * real speech: splitting a 2.42s written line around a measured pause left
+   * fragments of 1.26s and 0.38s, and the 0.38s one — which held the word
+   * "מרווה", the whole point of that line — fell under the picture floor and
+   * was silently discarded. A short fragment of audio is a *word*, not a
+   * flicker. Losing a word to remove a pause is a strictly worse cut.
+   */
+  minFragmentSec?: number;
 };
 
 /**
@@ -103,6 +124,8 @@ export function planCleanup(
     durationByAssetId = {},
     removeSilence = true,
     removeFillers = true,
+    measuredQuietByOrder = {},
+    minFragmentSec = MIN_FRAGMENT_SEC,
   } = options;
 
   const cleaned: CleanedMoment[] = [];
@@ -122,29 +145,33 @@ export function planCleanup(
     const start = Math.max(0, moment.startSec);
     const end = duration ? Math.min(duration, moment.endSec) : moment.endSec;
 
-    if (end - start < MIN_FRAGMENT_SEC) {
+    if (end - start < minFragmentSec) {
       cleaned.push({ ...moment, startSec: start, endSec: end, sourceOrder: moment.order });
       durationAfterSec += Math.max(0, end - start);
       continue;
     }
 
-    // An asset with no word timings can still be selected — 2 of the 11 clips
-    // in the current project have none. Nothing to measure, so nothing is
-    // proposed, and the moment passes through exactly as it was.
-    if (words.length === 0) {
+    // Quiet measured from the audio needs no transcript, so it applies even to
+    // an asset with no word timings — 2 of the 11 clips in the current project
+    // have none, and those used to pass through untouched.
+    const measured = measuredQuietByOrder[moment.order] ?? [];
+
+    const found: Removal[] = [
+      ...measured,
+      ...(words.length > 0 && removeSilence ? findSilenceRemovals(words, start, end) : []),
+      ...(words.length > 0 && removeFillers ? findFillerRemovals(words, start, end) : []),
+    ];
+
+    if (found.length === 0) {
       cleaned.push({ ...moment, startSec: start, endSec: end, sourceOrder: moment.order });
       durationAfterSec += end - start;
       continue;
     }
 
-    const found: Removal[] = [
-      ...(removeSilence ? findSilenceRemovals(words, start, end) : []),
-      ...(removeFillers ? findFillerRemovals(words, start, end) : []),
-    ];
     const removals = mergeRemovals(found, start, end);
 
     let fragments = subtractRemovals(start, end, removals).filter(
-      (f) => f.endSec - f.startSec >= MIN_FRAGMENT_SEC,
+      (f) => f.endSec - f.startSec >= minFragmentSec,
     );
 
     // Everything was dead air. Rather than delete a moment the user approved,
