@@ -20,6 +20,14 @@ export type ClipVisualDescription = {
 export type VisionClipInput = {
   filePath: string;
   durationSec: number;
+  /**
+   * Time range within the file to analyze — a transcript segment, typically.
+   * Omitted means the whole clip, which is also what a range spanning the
+   * full duration means; callers doing per-segment analysis should always
+   * set this so distinct segments of one long file get distinct frames.
+   */
+  segmentStartSec?: number;
+  segmentEndSec?: number;
 };
 
 export type VisionOutcome =
@@ -34,6 +42,11 @@ export interface VisionAnalyzer {
    * shared fixed cost to amortize — batching here just means "run many
    * concurrently instead of one huge sequential loop," bounded so a folder
    * of 38 clips doesn't fire 38 requests at once.
+   *
+   * `filePath` on each outcome is NOT a unique key — per-segment analysis
+   * means the same file can appear in `inputs` more than once with different
+   * segment ranges. The result array is positional: `outcomes[i]` always
+   * answers `inputs[i]`. Match by index, not by re-keying on filePath.
    */
   describeMany?(inputs: VisionClipInput[]): Promise<VisionOutcome[]>;
 }

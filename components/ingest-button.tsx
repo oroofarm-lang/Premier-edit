@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { ingestProject } from "@/app/actions";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 
 export function IngestButton({
   projectId,
@@ -18,8 +19,10 @@ export function IngestButton({
       size="sm"
       variant={hasAssets ? "outline" : "default"}
       disabled={pending}
+      className={pending ? "shadow-glow" : undefined}
       onClick={() => startTransition(() => ingestProject(projectId))}
     >
+      {pending && <Spinner />}
       {pending ? "Scanning..." : hasAssets ? "Re-scan folders" : "Run ingest"}
     </Button>
   );

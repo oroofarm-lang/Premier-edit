@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="index.js"></script>
+  </head>
+  <body>
+    <!-- One screen is visible at a time (see showScreen in index.js). The old
+         layout stacked every block in one scroll, which both buried the
+         primary action and relied on scrolling that UXP's panel webview does
+         not provide by default. -->
+    <header id="topbar">
+      <button id="back-button" class="icon-button" hidden>‹</button>
+      <div class="topbar-titles">
+        <div id="screen-title">Premier Edit</div>
+        <div id="screen-subtitle" class="meta" dir="auto"></div>
+      </div>
+    </header>
+
+    <div id="status">
+      <span id="status-spinner" class="spinner" hidden></span>
+      <span id="status-text">Connecting…</span>
+    </div>
+
+    <main id="screens">
+      <!-- ================= HOME ================= -->
+      <section class="screen" id="screen-home">
+        <div id="premiere-card" class="card compact" hidden>
+          <div class="card-label">Premiere</div>
+          <div id="premiere-info" class="body" dir="auto"></div>
+        </div>
+
+        <div class="section-head">
+          <span>Projects</span>
+          <button id="refresh-projects" class="link-button">Refresh</button>
+        </div>
+        <div id="project-cards" class="scroll-region"></div>
+
+        <div class="actions">
+          <sp-button id="new-project-button" variant="accent">
+            New project
+          </sp-button>
+        </div>
+      </section>
+
+      <!-- ============== NEW PROJECT ============== -->
+      <section class="screen" id="screen-new" hidden>
+        <label class="field-label" for="np-name">Name</label>
+        <input id="np-name" class="text-input" type="text" dir="auto" />
+
+        <div class="field-label">Output profile</div>
+        <div id="np-profile-chips" class="chip-row"></div>
+
+        <div class="field-label">Footage folder</div>
+        <div class="folder-row">
+          <span id="np-footage-path" class="path-chip muted">Not chosen</span>
+          <sp-button id="np-footage-pick" variant="secondary" quiet>
+            Choose…
+          </sp-button>
+        </div>
+
+        <div class="field-label">Audio folder <span class="meta">(optional)</span></div>
+        <div class="folder-row">
+          <span id="np-audio-path" class="path-chip muted">Not chosen</span>
+          <sp-button id="np-audio-pick" variant="secondary" quiet>
+            Choose…
+          </sp-button>
+        </div>
+
+        <label class="field-label" for="np-brief">Brief</label>
+        <textarea
+          id="np-brief"
+          class="text-input"
+          dir="auto"
+          rows="3"
+          placeholder="מה הסרטון צריך להעביר?"
+        ></textarea>
+
+        <div class="actions">
+          <sp-button id="np-create" variant="accent">Create project</sp-button>
+        </div>
+      </section>
+
+      <!-- ================ PIPELINE ================ -->
+      <section class="screen" id="screen-pipeline" hidden>
+        <div id="stage-rows"></div>
+
+        <div class="actions">
+          <sp-button id="open-cut-button" variant="secondary" disabled>
+            Review cut
+          </sp-button>
+          <sp-button id="build-button" variant="accent" disabled>
+            Build sequence
+          </sp-button>
+        </div>
+
+        <!-- On by default: while the story is being written and rewritten,
+             picture only gets in the way of hearing whether it holds. -->
+        <label id="audio-only-row" class="check-row">
+          <input id="audio-only-check" type="checkbox" checked />
+          <span>Audio only — build the soundtrack, leave the picture empty</span>
+        </label>
+
+        <div id="plan-block" class="card" hidden>
+          <div class="card-label">Plan to build</div>
+          <div id="plan-summary" class="body"></div>
+          <ul id="plan-list" class="scroll-region"></ul>
+        </div>
+      </section>
+
+      <!-- =============== CUT REVIEW =============== -->
+      <section class="screen" id="screen-cut" hidden>
+        <div id="profile-chips" class="chip-row"></div>
+        <div class="actions">
+          <sp-button id="generate-profiles-button" variant="secondary" quiet>
+            Generate all 3 profiles
+          </sp-button>
+        </div>
+
+        <div id="cut-premise" class="body muted" dir="auto"></div>
+        <div id="cut-beatplan" class="body muted" dir="auto"></div>
+        <ul id="cut-list" class="scroll-region"></ul>
+
+        <div id="video-layer-block" hidden>
+          <div class="section-head">
+            <span>Picture layer</span>
+            <span id="video-layer-count" class="meta"></span>
+          </div>
+          <div id="video-layer-note" class="body muted">
+            The picture is chosen separately from the sound and changes on its
+            own rhythm, so these do not line up with the moments above.
+          </div>
+          <ul id="video-layer-list" class="scroll-region"></ul>
+        </div>
+
+        <div class="actions">
+          <sp-button id="generate-video-button" variant="secondary" quiet>
+            Generate picture layer
+          </sp-button>
+        </div>
+
+        <details id="not-chosen-details" hidden>
+          <summary id="not-chosen-summary" class="meta"></summary>
+          <ul id="not-chosen-list" class="scroll-region"></ul>
+        </details>
+
+        <div id="refine-block" hidden>
+          <div class="section-head"><span>Refine this cut</span></div>
+          <div id="refine-chips" class="chip-row"></div>
+          <textarea
+            id="refine-input"
+            class="text-input"
+            dir="auto"
+            rows="2"
+            placeholder="מה לשנות בקאט?"
+          ></textarea>
+          <div class="actions">
+            <sp-button id="refine-send-button" variant="secondary">
+              Send
+            </sp-button>
+          </div>
+          <ul id="refine-turns" class="scroll-region"></ul>
+
+          <div id="draft-block" class="card" hidden>
+            <div class="card-label">Proposed version</div>
+            <div id="draft-summary" class="body"></div>
+            <ul id="draft-diff" class="scroll-region"></ul>
+            <div class="actions">
+              <sp-button id="draft-apply-button" variant="accent">
+                Apply
+              </sp-button>
+              <sp-button id="draft-discard-button" variant="secondary">
+                Discard
+              </sp-button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <details id="log-details">
+      <summary class="meta">Activity log</summary>
+      <ul id="log" class="scroll-region"></ul>
+    </details>
+
+    <dialog id="confirm-dialog">
+      <sp-heading size="S">Build sequence?</sp-heading>
+      <sp-divider size="medium"></sp-divider>
+      <sp-body id="confirm-text"></sp-body>
+      <sp-body class="meta">
+        This creates a new sequence and imports any missing source files. Your
+        existing sequences are not modified.
+      </sp-body>
+      <div class="actions">
+        <sp-button id="confirm-cancel" variant="secondary">Cancel</sp-button>
+        <sp-button id="confirm-ok" variant="accent">Build</sp-button>
+      </div>
+    </dialog>
+  </body>
+</html>

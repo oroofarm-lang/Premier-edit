@@ -1,0 +1,482 @@
+:root {
+  --cosmic-bg: #0b0d17;
+  --cosmic-surface: #121526;
+  --cosmic-surface-hi: #171b30;
+  --cosmic-border: #1f2440;
+  --cosmic-violet: #7c3aed;
+  --cosmic-cyan: #06b6d4;
+  --cosmic-text: #f8fafc;
+  --cosmic-muted: #94a3b8;
+  --cosmic-red: #ef4444;
+  --cosmic-green: #10b981;
+  --cosmic-amber: #f59e0b;
+
+  /* One type scale, used everywhere. The old panel rendered almost
+     everything at 11px, which is the main reason it read as unfinished. */
+  --fs-title: 15px;
+  --fs-body: 13px;
+  --fs-meta: 11px;
+
+  --gap: 10px;
+  --radius: 8px;
+}
+
+/* UXP's panel webview does not provide ambient document scrolling the way a
+   normal browser tab does — without an explicit height + overflow on the root
+   elements, content taller than the docked panel is silently clipped with no
+   scrollbar at all. `vh` is used rather than a `height: 100%` chain because it
+   ties directly to the viewport instead of depending on every ancestor
+   reporting a real, non-auto height. The screen model keeps far less content
+   in play at once, but this stays as the backstop. */
+/* Any rule that sets `display` beats the user-agent's `[hidden] {display:none}`,
+   so every `.card`/`.screen`/flex container in here would ignore the hidden
+   attribute the panel toggles. Stated once, forcefully, rather than repeating
+   a `[hidden]` override on each component. */
+[hidden] {
+  display: none !important;
+}
+
+html {
+  height: 100vh;
+  overflow: hidden;
+}
+
+body {
+  height: 100vh;
+  margin: 0;
+  padding: 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  overflow-x: hidden;
+  overflow-y: auto;
+  font-family: -apple-system, sans-serif;
+  font-size: var(--fs-body);
+  line-height: 1.45;
+  background-color: var(--cosmic-bg);
+  color: var(--uxp-host-text-color, var(--cosmic-text));
+}
+
+/* ---------------------------------------------------------------- topbar */
+
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.topbar-titles {
+  min-width: 0;
+}
+
+#screen-title {
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+#screen-subtitle:empty {
+  display: none;
+}
+
+.icon-button {
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  color: var(--cosmic-text);
+  background-color: var(--cosmic-surface);
+  border: 1px solid var(--cosmic-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  border-color: var(--cosmic-violet);
+}
+
+.icon-button[hidden] {
+  display: none;
+}
+
+.link-button {
+  font: inherit;
+  font-size: var(--fs-meta);
+  color: var(--cosmic-muted);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  color: var(--cosmic-text);
+}
+
+/* ---------------------------------------------------------------- status */
+
+#status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  font-size: var(--fs-meta);
+  color: var(--cosmic-muted);
+}
+
+#status.error {
+  color: var(--cosmic-red);
+}
+
+@keyframes orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border: 2px solid var(--cosmic-violet);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: orbit 0.9s linear infinite;
+}
+
+.spinner[hidden] {
+  display: none;
+}
+
+/* --------------------------------------------------------------- screens */
+
+#screens {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.screen[hidden] {
+  display: none;
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--cosmic-muted);
+}
+
+.body {
+  font-size: var(--fs-body);
+  overflow-wrap: anywhere;
+}
+
+.body:empty {
+  display: none;
+}
+
+.meta {
+  font-size: var(--fs-meta);
+  color: var(--cosmic-muted);
+}
+
+.muted {
+  color: var(--cosmic-muted);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* A build option that sits under the buttons it modifies, rather than in a
+   settings screen away from the action it changes. */
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-block-start: var(--gap);
+  font-size: var(--fs-meta);
+  color: var(--cosmic-muted);
+  cursor: pointer;
+}
+
+.check-row input {
+  margin: 0;
+  flex: none;
+  accent-color: var(--cosmic-violet);
+}
+
+/* ----------------------------------------------------------------- cards */
+
+.card {
+  padding: 10px;
+  background-color: var(--cosmic-surface);
+  border: 1px solid var(--cosmic-border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card.compact {
+  padding: 8px 10px;
+}
+
+.card-label {
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--cosmic-muted);
+}
+
+/* Project cards on the home screen. */
+.project-card {
+  width: 100%;
+  text-align: start;
+  font: inherit;
+  color: var(--cosmic-text);
+  padding: 10px;
+  margin-bottom: 8px;
+  background-color: var(--cosmic-surface);
+  border: 1px solid var(--cosmic-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: block;
+}
+
+.project-card:hover {
+  background-color: var(--cosmic-surface-hi);
+  border-color: var(--cosmic-violet);
+}
+
+.project-card .name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.project-card .sub {
+  font-size: var(--fs-meta);
+  color: var(--cosmic-muted);
+  margin-top: 2px;
+}
+
+/* ------------------------------------------------------------ stage rows */
+
+.stage {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background-color: var(--cosmic-surface);
+  border: 1px solid var(--cosmic-border);
+  border-radius: var(--radius);
+  margin-bottom: 8px;
+}
+
+.stage-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.stage-name {
+  font-weight: 600;
+}
+
+.stage-detail {
+  font-size: var(--fs-meta);
+  color: var(--cosmic-muted);
+  overflow-wrap: anywhere;
+}
+
+.stage-dot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 50%;
+  background-color: var(--cosmic-border);
+}
+
+.stage-dot.done { background-color: var(--cosmic-green); }
+.stage-dot.approved { background-color: var(--cosmic-cyan); }
+.stage-dot.error { background-color: var(--cosmic-red); }
+.stage-dot.running {
+  background-color: var(--cosmic-amber);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ----------------------------------------------------------- form inputs */
+
+.field-label {
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--cosmic-muted);
+  margin-bottom: -4px;
+}
+
+.text-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  font: inherit;
+  font-size: var(--fs-body);
+  color: var(--cosmic-text);
+  background-color: var(--cosmic-surface);
+  border: 1px solid var(--cosmic-border);
+  border-radius: var(--radius);
+  resize: vertical;
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: var(--cosmic-violet);
+}
+
+.folder-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.path-chip {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 9px;
+  font-size: var(--fs-meta);
+  background-color: var(--cosmic-surface);
+  border: 1px solid var(--cosmic-border);
+  border-radius: var(--radius);
+  /* Paths are long and often contain Hebrew folder names; wrapping beats
+     truncation because the user needs to confirm the right folder. */
+  overflow-wrap: anywhere;
+}
+
+/* ----------------------------------------------------------------- chips */
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  font: inherit;
+  font-size: var(--fs-meta);
+  color: var(--cosmic-text);
+  background-color: var(--cosmic-surface);
+  border: 1px solid var(--cosmic-border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+
+.chip:hover:not(:disabled) {
+  border-color: var(--cosmic-violet);
+}
+
+.chip.active {
+  background-color: var(--cosmic-violet);
+  border-color: var(--cosmic-violet);
+}
+
+.chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* --------------------------------------------------------- scroll region */
+
+/* Each list can outgrow the panel on its own — a real cut has 7-13 moments,
+   plus a turn per refinement instruction, plus a diff line per moment. Giving
+   each its own bounded scroll keeps any one of them from pushing the screen's
+   primary action out of view. */
+.scroll-region {
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+ul.scroll-region {
+  padding: 8px 8px 8px 22px;
+  background-color: var(--cosmic-surface);
+  border: 1px solid var(--cosmic-border);
+  border-radius: var(--radius);
+}
+
+ul.scroll-region:empty {
+  display: none;
+}
+
+ul.scroll-region li {
+  font-size: var(--fs-meta);
+  margin-bottom: 3px;
+  overflow-wrap: anywhere;
+}
+
+#project-cards {
+  max-height: none;
+}
+
+/* ------------------------------------------------------ details sections */
+
+details > summary {
+  cursor: pointer;
+}
+
+details[open] > summary {
+  margin-bottom: 6px;
+}
+
+#log-details {
+  flex: none;
+}
+
+#log {
+  opacity: 0.75;
+  max-height: 140px;
+}
+
+/* -------------------------------------------------------- turns and diff */
+
+.turn-ok { color: var(--cosmic-muted); }
+.turn-error { color: var(--cosmic-red); }
+
+.diff-kept { color: var(--cosmic-muted); }
+.diff-added { color: var(--cosmic-green); }
+.diff-removed { color: var(--cosmic-red); }
+.diff-moved { color: var(--cosmic-cyan); }
+
+/* ---------------------------------------------------------------- dialog */
+
+#confirm-dialog {
+  background-color: var(--cosmic-bg);
+  color: var(--cosmic-text);
+  border: 1px solid var(--cosmic-border);
+  border-radius: var(--radius);
+}

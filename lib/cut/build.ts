@@ -1,11 +1,27 @@
 import path from "node:path";
 import { prisma } from "@/lib/db";
-import type { CutClip, CutTimeline } from "./types";
+import { snapToWordBoundary } from "./snap";
+import { resolveVideoOverride } from "./video-override";
+import { resolveSourceWindow } from "@/lib/video/layout-plan";
+import type { CutClip, CutTimeline, VideoLayerClip } from "./types";
+import type { TranscriptWord } from "@/lib/transcription/types";
 
 /** Fallbacks for when the source material carries no usable video metadata. */
 const DEFAULT_FPS = 25;
 const DEFAULT_WIDTH = 1080;
 const DEFAULT_HEIGHT = 1920;
+
+/** Audio-only crossfade overlap at each internal join, in seconds. */
+const AUDIO_CROSSFADE_SEC = 0.15;
+
+/** All words across every segment of an asset's transcript, in one flat, time-sorted list. */
+function wordsForAsset(transcriptSegmentsJson: string | undefined): TranscriptWord[] {
+  if (!transcriptSegmentsJson) return [];
+  const segments = JSON.parse(transcriptSegmentsJson) as {
+    words?: TranscriptWord[];
+  }[];
+  return segments.flatMap((s) => s.words ?? []);
+}
 
 /**
  * Turns approved selections into a butt-joined sequence: each chosen moment
@@ -19,7 +35,10 @@ export async function buildCutTimeline(projectId: string): Promise<CutTimeline> 
     include: {
       selections: {
         orderBy: { order: "asc" },
-        include: { mediaAsset: true },
+        include: {
+          mediaAsset: { include: { transcript: true } },
+          videoAsset: true,
+        },
       },
     },
   });
@@ -44,25 +63,86 @@ export async function buildCutTimeline(projectId: string): Promise<CutTimeline> 
 
   for (const selection of project.selections) {
     const asset = selection.mediaAsset;
-    const length = selection.endSec - selection.startSec;
+
+    const words = wordsForAsset(asset.transcript?.segmentsJson);
+    const snapped = snapToWordBoundary(selection.startSec, selection.endSec, words);
+    // Never let a snap reach past the file itself.
+    const sourceInSec = Math.max(0, snapped.startSec);
+    const sourceOutSec = asset.durationSec
+      ? Math.min(asset.durationSec, snapped.endSec)
+      : snapped.endSec;
+    const length = sourceOutSec - sourceInSec;
+
+    // The model picked this footage for how it looks, not for how long it is —
+    // fit it to the audio it has to cover, or drop it if the clip is too short.
+    const overrideAsset = selection.videoAsset;
+    const fitted =
+      overrideAsset &&
+      selection.videoStartSec !== null &&
+      selection.videoEndSec !== null &&
+      overrideAsset.durationSec !== null
+        ? resolveVideoOverride(
+            {
+              startSec: selection.videoStartSec,
+              endSec: selection.videoEndSec,
+              sourceDurationSec: overrideAsset.durationSec,
+            },
+            length,
+          )
+        : null;
 
     clips.push({
       filePath: asset.filePath,
       fileName: path.basename(asset.filePath),
       hasVideo: asset.width !== null && asset.height !== null,
       hasAudio: asset.sampleRate !== null || asset.kind === "AUDIO",
-      sourceInSec: selection.startSec,
-      sourceOutSec: selection.endSec,
+      sourceInSec,
+      sourceOutSec,
+      audioInSec: sourceInSec,
+      audioOutSec: sourceOutSec,
       timelineStartSec: playhead,
       timelineEndSec: playhead + length,
       sourceDurationSec: asset.durationSec ?? length,
       fps: asset.fps,
       width: asset.width,
       height: asset.height,
+      ...(fitted && overrideAsset
+        ? {
+            videoOverride: {
+              filePath: overrideAsset.filePath,
+              fileName: path.basename(overrideAsset.filePath),
+              sourceInSec: fitted.startSec,
+              sourceOutSec: fitted.endSec,
+              sourceDurationSec: overrideAsset.durationSec ?? length,
+              fps: overrideAsset.fps,
+              width: overrideAsset.width,
+              height: overrideAsset.height,
+            },
+          }
+        : {}),
     });
 
     playhead += length;
   }
+
+  // Widen each internal join's audio range into real, bounded source
+  // footage so a crossfade transition has material to blend from — see
+  // CutClip.audioInSec/audioOutSec.
+  for (let i = 0; i < clips.length - 1; i++) {
+    const current = clips[i];
+    const next = clips[i + 1];
+    if (!current.hasAudio || !next.hasAudio) continue;
+    const halfOverlap = AUDIO_CROSSFADE_SEC / 2;
+    // Clamped to each clip's own real duration — this is reaching into footage
+    // that actually exists on disk, never manufacturing frames that don't.
+    current.audioOutSec = Math.min(
+      current.sourceDurationSec,
+      current.sourceOutSec + halfOverlap,
+    );
+    next.audioInSec = Math.max(0, next.sourceInSec - halfOverlap);
+  }
+
+  const videoLayer = await buildVideoLayer(projectId);
 
   return {
     name: project.name,
@@ -71,5 +151,48 @@ export async function buildCutTimeline(projectId: string): Promise<CutTimeline> 
     height,
     durationSec: Math.round(playhead * 1000) / 1000,
     clips,
+    ...(videoLayer.length > 0 ? { videoLayer } : {}),
   };
+}
+
+/**
+ * Reads the picture layer produced by the video-layout stage. Returns an
+ * empty array when that stage has not run, so a project with only an audio
+ * spine keeps building exactly as it did before the two-timeline model.
+ */
+async function buildVideoLayer(projectId: string): Promise<VideoLayerClip[]> {
+  const placements = await prisma.videoPlacement.findMany({
+    where: { projectId },
+    orderBy: { order: "asc" },
+    include: { shot: { include: { mediaAsset: true } } },
+  });
+
+  return placements.map((p) => {
+    const asset = p.shot.mediaAsset;
+    const span = p.timelineEndSec - p.timelineStartSec;
+    // Which part of the window to use, not just how much of it: a shot graded
+    // as completing its movement is anchored to its end so the action
+    // actually resolves on screen. See resolveSourceWindow.
+    const picked = resolveSourceWindow(p.shot, span);
+    // The layout validator already guarantees the span fits inside the shot,
+    // but clamp anyway: a source in/out that runs past the file is the one
+    // error Premiere reports late and unhelpfully.
+    const limit = Math.min(p.shot.endSec, asset.durationSec ?? p.shot.endSec);
+    const sourceOutSec = Math.min(picked.sourceOutSec, limit);
+    const sourceInSec = Math.max(0, Math.min(picked.sourceInSec, sourceOutSec));
+
+    return {
+      filePath: asset.filePath,
+      fileName: asset.filePath.split("/").pop() ?? "",
+      sourceInSec,
+      sourceOutSec,
+      timelineStartSec: p.timelineStartSec,
+      timelineEndSec: p.timelineEndSec,
+      useSourceAudio: p.useSourceAudio,
+      sourceDurationSec: asset.durationSec ?? sourceOutSec,
+      fps: asset.fps,
+      width: asset.width,
+      height: asset.height,
+    };
+  });
 }

@@ -43,8 +43,32 @@ model Project {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  // Snapshot of the LLM selector's own reasoning from its most recent run —
+  // replaced on every re-run, same lifecycle as `selections` below. Null for
+  // the heuristic selector, which has no narrative premise or pre-filter
+  // shortlist to report. Lets the "Content selection" checkpoint show what
+  // the model was building and considered, not just what it picked.
+  selectionPremise       String?
+  selectionBeatPlan      String?
+  selectionShortlistJson String?
+
+  // One-shot preview of all three OutputProfile cuts from a single pipeline
+  // run (shares one vision-analysis pass) — see task #49. JSON array of
+  // ProfilePreview (lib/selection/run.ts). Replaced wholesale each run;
+  // "applying" one copies it into the fields above and into `selections`.
+  multiProfilePreviewsJson String?
+
+  // Pending conversational-refinement result (task #50) — a RefinementDraft
+  // (lib/selection/refine.ts): the candidate replacement SelectionResult plus
+  // the full turn-by-turn conversation that produced it. Null when there is
+  // no pending refinement. Cleared by applying/discarding the draft, and by
+  // persistSelection itself (a fresh selection run invalidates a draft that
+  // was refining the cut it's about to replace).
+  refinementDraftJson String?
+
   mediaAssets    MediaAsset[]
   selections     Selection[]
+  videoPlacements VideoPlacement[]
   timelines      Timeline[]
   editVersions   EditVersion[]
   checkpoints    ApprovalCheckpoint[]
@@ -66,8 +90,10 @@ model MediaAsset {
   createdAt     DateTime   @default(now())
 
   transcript      Transcript?
-  visualAnalysis  VisualAnalysis?
-  selections      Selection[]
+  visualAnalyses  VisualAnalysis[]
+  selections      Selection[]      @relation("SelectionSource")
+  videoForSelections Selection[]   @relation("SelectionVideoOverride")
+  shots           Shot[]
 }
 
 model Transcript {
@@ -81,27 +107,39 @@ model Transcript {
   createdAt    DateTime    @default(now())
 }
 
-// Per-clip visual understanding — what a vision-capable model sees in a few
-// sampled frames, independent of whatever was said. Content selection uses
-// this alongside the transcript so a silent or sparsely-spoken clip can still
+// Per-segment visual understanding — what a vision-capable model sees in a
+// few sampled frames from one time range within a clip, independent of
+// whatever was said. One row per (mediaAsset, time range): a long clip cut
+// into several transcript segments gets a separate description per segment,
+// because two moments in the same file can look completely different (see
+// CLAUDE.md task #45 — a single per-file summary made every candidate from
+// one source describe identically, which is part of why the B-roll selector
+// never had a visual reason to pick videoFrom). Content selection uses this
+// alongside the transcript so a silent or sparsely-spoken segment can still
 // be picked on visual merit (e.g. a clean product close-up).
 model VisualAnalysis {
   id           String      @id @default(cuid())
   mediaAsset   MediaAsset  @relation(fields: [mediaAssetId], references: [id])
-  mediaAssetId String      @unique
+  mediaAssetId String
+  startSec     Float
+  endSec       Float
   engine       String
   summary      String
   shotType     String?
   tagsJson     String
   qualityNotes String?
   createdAt    DateTime    @default(now())
+
+  // Re-running content selection must not re-pay for the same segment's
+  // vision call — transcript segment boundaries are stable once transcribed.
+  @@unique([mediaAssetId, startSec, endSec])
 }
 
 model Selection {
   id           String      @id @default(cuid())
   project      Project     @relation(fields: [projectId], references: [id])
   projectId    String
-  mediaAsset   MediaAsset  @relation(fields: [mediaAssetId], references: [id])
+  mediaAsset   MediaAsset  @relation("SelectionSource", fields: [mediaAssetId], references: [id])
   mediaAssetId String
   startSec     Float
   endSec       Float
@@ -109,6 +147,14 @@ model Selection {
   score        Float?
   reason       String?
   createdAt    DateTime    @default(now())
+
+  // Set only when this moment shows a different clip's footage than the one
+  // carrying its audio (B-roll cutaway). Null means video comes from
+  // mediaAsset, exactly as it always has.
+  videoAsset    MediaAsset? @relation("SelectionVideoOverride", fields: [videoAssetId], references: [id])
+  videoAssetId  String?
+  videoStartSec Float?
+  videoEndSec   Float?
 }
 
 model Timeline {
@@ -152,4 +198,63 @@ model ApprovalCheckpoint {
   note       String?
   createdAt  DateTime      @default(now())
   approvedAt DateTime?
+}
+
+/// A span of one clip worth considering for the video layer, found by
+/// deterministic ffmpeg analysis rather than by a model. Quality here is the
+/// two signals the user named — a camera movement that completes, and
+/// steadiness — plus sharpness and exposure as guards against unusable
+/// footage. See docs/superpowers/specs/2026-08-01-two-timeline-audio-spine-design.md.
+model Shot {
+  id           String     @id @default(cuid())
+  mediaAsset   MediaAsset @relation(fields: [mediaAssetId], references: [id])
+  mediaAssetId String
+  startSec     Float
+  endSec       Float
+  /// "scene-cut" when the span came from a detected hard cut, "motion-window"
+  /// when it was found by searching inside a continuous take.
+  source       String
+  stability            Float
+  movementCompleteness Float
+  /// How much is happening in frame, 0..1. Default 0 only so the additive
+  /// migration works on rows written before this was scored; re-run the
+  /// catalogue to populate real values.
+  activity             Float  @default(0)
+  /// Null when the appearance pass did not run or the filter was unavailable.
+  sharpness    Float?
+  exposure     Float?
+  qualityScore Float
+  createdAt    DateTime   @default(now())
+
+  // Re-running analysis on unchanged footage must not duplicate rows, and
+  // window boundaries are deterministic for a given clip and settings.
+  placements   VideoPlacement[]
+
+  @@unique([mediaAssetId, startSec, endSec])
+  @@index([mediaAssetId, qualityScore])
+}
+
+/// One span of the video layer: which shot plays over which stretch of the
+/// audio spine. The two layers have different counts and different
+/// boundaries — ten spoken moments may be covered by twenty-five shots or by
+/// six — so this cannot live on `Selection`.
+/// See docs/superpowers/specs/2026-08-01-two-timeline-audio-spine-design.md.
+model VideoPlacement {
+  id        String  @id @default(cuid())
+  project   Project @relation(fields: [projectId], references: [id])
+  projectId String
+  shot      Shot    @relation(fields: [shotId], references: [id])
+  shotId    String
+  order     Int
+  /// Position on the finished timeline, measured from the start of the cut —
+  /// not a time inside the source clip, which lives on the Shot.
+  timelineStartSec Float
+  timelineEndSec   Float
+  /// Off by default. The spine already carries the speech, so a clip's own
+  /// dialogue is noise — but a knife on a board is worth keeping.
+  useSourceAudio Boolean @default(false)
+  reason    String
+  createdAt DateTime @default(now())
+
+  @@index([projectId, order])
 }

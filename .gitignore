@@ -67,3 +67,9 @@ next-env.d.ts
 # panel verification). Never intentional project content.
 /Adobe Premiere Pro Auto-Save/
 /*.prproj
+
+# Scratch copy of the panel served over HTTP for verification (npm run panel:preview)
+public/_panel
+
+# Briefs and scripts written for the script-writing agents; regenerable.
+scripts-out/

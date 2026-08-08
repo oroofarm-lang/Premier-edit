@@ -20,6 +20,12 @@ export type CandidateSegment = {
    */
   visualSummary?: string | null;
   visualTags?: string[];
+  /**
+   * e.g. "close-up", "medium", "wide" — the strongest available signal for
+   * "this is a person talking to camera," which is the classic B-roll
+   * opportunity (see LlmContentSelector's videoFrom prompt).
+   */
+  visualShotType?: string | null;
 };
 
 export type SelectedSegment = {
@@ -32,6 +38,16 @@ export type SelectedSegment = {
   score: number;
   /** Human-readable justification, shown in the approval UI. */
   reason: string;
+  /**
+   * Footage to show over this moment's audio, when the strongest visual for
+   * the beat lives in a different clip than the one being heard (B-roll
+   * cutaway). Absent means picture and sound both come from this moment.
+   */
+  videoOverride?: {
+    mediaAssetId: string;
+    startSec: number;
+    endSec: number;
+  };
 };
 
 export type SelectionRequest = {
@@ -41,9 +57,27 @@ export type SelectionRequest = {
   candidates: CandidateSegment[];
 };
 
+export type SelectionResult = {
+  selections: SelectedSegment[];
+  /**
+   * One-sentence narrative idea the selector was building toward, and which
+   * named story structure it followed — present only for a selector that
+   * actually reasons about narrative (the LLM one). Absent for the heuristic
+   * selector, which has no such concept.
+   */
+  premise?: string;
+  beatPlan?: string[];
+  /**
+   * Every candidate the selector considered before narrowing down to
+   * `selections`, when it pre-filters (the LLM selector's heuristic shortlist
+   * stage). Lets the UI show what didn't make the cut, not just what did.
+   */
+  shortlist?: CandidateSegment[];
+};
+
 export interface ContentSelector {
   readonly name: string;
-  select(request: SelectionRequest): Promise<SelectedSegment[]>;
+  select(request: SelectionRequest): Promise<SelectionResult>;
 }
 
 /**
@@ -54,4 +88,17 @@ export const PROFILE_TARGET_SECONDS: Record<OutputProfile, number> = {
   REEL_SHORT: 30,
   SOCIAL_POST: 60,
   YOUTUBE_LONG: 180,
+};
+
+/** Every profile value, for iterating (e.g. generating all of them at once). */
+export const ALL_OUTPUT_PROFILES: OutputProfile[] = [
+  "REEL_SHORT",
+  "SOCIAL_POST",
+  "YOUTUBE_LONG",
+];
+
+export const PROFILE_LABELS: Record<OutputProfile, string> = {
+  REEL_SHORT: "Reel / Short",
+  SOCIAL_POST: "Social post",
+  YOUTUBE_LONG: "YouTube long-form",
 };

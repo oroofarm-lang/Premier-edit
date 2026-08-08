@@ -3,6 +3,7 @@
 import { useTransition } from "react";
 import { approveCheckpoint } from "@/app/actions";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 
 export function ApproveCheckpointButton({
   checkpointId,
@@ -19,10 +20,12 @@ export function ApproveCheckpointButton({
     <Button
       size="sm"
       disabled={pending}
+      className={pending ? "shadow-glow" : undefined}
       onClick={() =>
         startTransition(() => approveCheckpoint(checkpointId, projectId))
       }
     >
+      {pending && <Spinner />}
       {pending ? "Approving..." : label}
     </Button>
   );

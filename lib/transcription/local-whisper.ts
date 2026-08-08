@@ -6,6 +6,7 @@ import type {
   Transcriber,
   TranscriptionOutcome,
   TranscriptionResult,
+  TranscriptSegment,
 } from "./types";
 
 const PROJECT_ROOT = process.cwd();
@@ -17,6 +18,48 @@ export type LocalWhisperOptions = {
   /** faster-whisper model size. large-v3 is the most accurate for Hebrew. */
   model?: string;
 };
+
+export type RawWhisperResult =
+  | {
+      path: string;
+      language: string;
+      languageProbability: number;
+      durationSec: number;
+      text: string;
+      segments: {
+        start: number;
+        end: number;
+        text: string;
+        words?: { word: string; start: number; end: number }[];
+      }[];
+    }
+  | { path: string; error: string };
+
+export function toTranscriptionResult(
+  raw: RawWhisperResult,
+  engine: string,
+): TranscriptionResult {
+  if ("error" in raw) {
+    throw new Error(raw.error);
+  }
+  return {
+    engine,
+    language: raw.language,
+    text: raw.text,
+    segments: raw.segments.map(
+      (s): TranscriptSegment => ({
+        startSec: s.start,
+        endSec: s.end,
+        text: s.text,
+        words: s.words?.map((w) => ({
+          word: w.word,
+          startSec: w.start,
+          endSec: w.end,
+        })),
+      }),
+    ),
+  };
+}
 
 /**
  * Runs faster-whisper locally via the project venv. Nothing leaves the
@@ -38,7 +81,7 @@ export class LocalWhisperTranscriber implements Transcriber {
   ): Promise<TranscriptionResult> {
     return withExtractedAudio(mediaFilePath, async (wavPath) => {
       const [raw] = await this.runPython([wavPath], options);
-      return this.toResult(raw);
+      return toTranscriptionResult(raw, this.name);
     });
   }
 
@@ -60,25 +103,9 @@ export class LocalWhisperTranscriber implements Transcriber {
         if ("error" in raw) {
           return { filePath, ok: false, error: raw.error };
         }
-        return { filePath, ok: true, result: this.toResult(raw) };
+        return { filePath, ok: true, result: toTranscriptionResult(raw, this.name) };
       });
     });
-  }
-
-  private toResult(raw: RawWhisperResult): TranscriptionResult {
-    if ("error" in raw) {
-      throw new Error(raw.error);
-    }
-    return {
-      engine: this.name,
-      language: raw.language,
-      text: raw.text,
-      segments: raw.segments.map((s) => ({
-        startSec: s.start,
-        endSec: s.end,
-        text: s.text,
-      })),
-    };
   }
 
   /** Spawns one python process covering every path in `wavPaths`, in order. */
@@ -143,14 +170,3 @@ export class LocalWhisperTranscriber implements Transcriber {
     });
   }
 }
-
-type RawWhisperResult =
-  | {
-      path: string;
-      language: string;
-      languageProbability: number;
-      durationSec: number;
-      text: string;
-      segments: { start: number; end: number; text: string }[];
-    }
-  | { path: string; error: string };

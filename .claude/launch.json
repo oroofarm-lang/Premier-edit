@@ -7,6 +7,15 @@
       "port": 3002
     },
     {
+      "name": "next-dev",
+      "runtimeExecutable": "/bin/zsh",
+      "runtimeArgs": [
+        "-c",
+        "export NVM_DIR=\"$HOME/.nvm\"; [ -s \"$NVM_DIR/nvm.sh\" ] && \\. \"$NVM_DIR/nvm.sh\"; cd \"/Users/ohadfait/Desktop/פרוייקטים/Premier edit\" && npm run dev"
+      ],
+      "port": 3000
+    },
+    {
       "name": "stage2-dev",
       "runtimeExecutable": "/bin/zsh",
       "runtimeArgs": [

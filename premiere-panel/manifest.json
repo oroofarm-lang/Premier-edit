@@ -1,0 +1,36 @@
+{
+  "id": "com.premieredit.panel",
+  "name": "Premier Edit",
+  "version": "0.1.0",
+  "main": "index.html",
+  "host": [
+    {
+      "app": "premierepro",
+      "minVersion": "25.2.0"
+    }
+  ],
+  "manifestVersion": 5,
+  "requiredPermissions": {
+    "network": {
+      "domains": ["http://localhost:3002"]
+    },
+    "localFileSystem": "request"
+  },
+  "entrypoints": [
+    {
+      "type": "panel",
+      "id": "main",
+      "label": {
+        "default": "Premier Edit"
+      },
+      "minimumSize": {
+        "width": 300,
+        "height": 360
+      },
+      "preferredDockedSize": {
+        "width": 380,
+        "height": 620
+      }
+    }
+  ]
+}

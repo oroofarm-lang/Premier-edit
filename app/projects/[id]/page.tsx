@@ -7,7 +7,14 @@ import { IngestButton } from "@/components/ingest-button";
 import { ApproveCheckpointButton } from "@/components/approve-checkpoint-button";
 import { TranscribeButton } from "@/components/transcribe-button";
 import { SelectContentButton } from "@/components/select-content-button";
+import { GenerateAllProfilesButton } from "@/components/generate-all-profiles-button";
+import { ApplyProfileButton } from "@/components/apply-profile-button";
 import { ExportButton } from "@/components/export-button";
+import { RefinementPanel } from "@/components/refinement-panel";
+import { PROFILE_LABELS } from "@/lib/selection/types";
+import type { SelectedSegment } from "@/lib/selection/types";
+import type { ProfilePreview } from "@/lib/selection/run";
+import type { RefinementDraft } from "@/lib/selection/refine-plan";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +28,44 @@ function formatDuration(seconds: number | null) {
 function formatResolution(width: number | null, height: number | null) {
   if (!width || !height) return null;
   return `${width}×${height}`;
+}
+
+type ShortlistEntry = {
+  mediaAssetId: string;
+  filePath: string;
+  startSec: number;
+  endSec: number;
+  text: string;
+  visualSummary?: string | null;
+  visualShotType?: string | null;
+  chosenOrder: number | null;
+};
+
+function parseShortlist(json: string | null): ShortlistEntry[] {
+  if (!json) return [];
+  try {
+    return JSON.parse(json) as ShortlistEntry[];
+  } catch {
+    return [];
+  }
+}
+
+function parseProfilePreviews(json: string | null): ProfilePreview[] {
+  if (!json) return [];
+  try {
+    return JSON.parse(json) as ProfilePreview[];
+  } catch {
+    return [];
+  }
+}
+
+function parseRefinementDraft(json: string | null): RefinementDraft | null {
+  if (!json) return null;
+  try {
+    return JSON.parse(json) as RefinementDraft;
+  } catch {
+    return null;
+  }
 }
 
 export default async function ProjectPage({
@@ -38,7 +83,7 @@ export default async function ProjectPage({
       checkpoints: { orderBy: { createdAt: "asc" } },
       selections: {
         orderBy: { order: "asc" },
-        include: { mediaAsset: true },
+        include: { mediaAsset: true, videoAsset: true },
       },
       editVersions: {
         orderBy: { versionNum: "desc" },
@@ -63,6 +108,27 @@ export default async function ProjectPage({
       project.selections.reduce((sum, s) => sum + (s.endSec - s.startSec), 0) *
         10,
     ) / 10;
+  const beatPlan: string[] = project.selectionBeatPlan
+    ? (JSON.parse(project.selectionBeatPlan) as string[])
+    : [];
+  const shortlist = parseShortlist(project.selectionShortlistJson);
+  const consideredNotChosen = shortlist
+    .filter((c) => c.chosenOrder === null)
+    .sort((a, b) => a.filePath.localeCompare(b.filePath) || a.startSec - b.startSec);
+  const profilePreviews = parseProfilePreviews(project.multiProfilePreviewsJson);
+  const refinementDraft = parseRefinementDraft(project.refinementDraftJson);
+  // The live cut, in the shape the refinement diff compares against.
+  const currentSelections: SelectedSegment[] = project.selections.map((s) => ({
+    mediaAssetId: s.mediaAssetId,
+    startSec: s.startSec,
+    endSec: s.endSec,
+    order: s.order,
+    score: s.score ?? 0,
+    reason: s.reason ?? "",
+  }));
+  const fileNameByAssetId = Object.fromEntries(
+    project.mediaAssets.map((a) => [a.id, a.filePath.split("/").pop() ?? a.filePath]),
+  );
 
   // Silent B-roll has no audio stream, so there is nothing to transcribe.
   const transcribable = project.mediaAssets.filter(
@@ -178,12 +244,45 @@ export default async function ProjectPage({
         <Card className="mb-8">
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">Content selection</CardTitle>
-            <SelectContentButton
-              projectId={project.id}
-              hasSelections={project.selections.length > 0}
-            />
+            <div className="flex gap-2">
+              <SelectContentButton
+                projectId={project.id}
+                hasSelections={project.selections.length > 0}
+              />
+              <GenerateAllProfilesButton projectId={project.id} />
+            </div>
           </CardHeader>
           <CardContent>
+            {profilePreviews.length > 0 && (
+              <div className="mb-4 grid gap-3 sm:grid-cols-3">
+                {profilePreviews.map((preview) => (
+                  <div
+                    key={preview.outputProfile}
+                    className="rounded-lg border px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">
+                        {PROFILE_LABELS[preview.outputProfile]}
+                      </span>
+                      <ApplyProfileButton
+                        projectId={project.id}
+                        outputProfile={preview.outputProfile}
+                        isActive={project.outputProfile === preview.outputProfile}
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {preview.selections.length} moments ·{" "}
+                      {preview.totalDurationSec}s
+                    </p>
+                    {preview.premise && (
+                      <p dir="auto" className="mt-1 text-xs">
+                        💡 {preview.premise}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             {project.selections.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Pick the moments worth cutting, based on the transcript and the
@@ -191,6 +290,16 @@ export default async function ProjectPage({
               </p>
             ) : (
               <>
+                {project.selectionPremise && (
+                  <div className="mb-3 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+                    <p dir="auto">💡 {project.selectionPremise}</p>
+                    {beatPlan.length > 0 && (
+                      <p className="mt-1 text-xs text-muted-foreground" dir="auto">
+                        מבנה: {beatPlan.join(" ← ")}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <p className="text-sm">
                   <span className="font-medium">
                     {project.selections.length}
@@ -215,9 +324,53 @@ export default async function ProjectPage({
                       <p className="mt-1 text-xs text-muted-foreground">
                         {selection.reason}
                       </p>
+                      {selection.videoAsset && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          🎥 וידיאו מ:{" "}
+                          <span className="font-mono">
+                            {selection.videoAsset.filePath.split("/").pop()}
+                          </span>{" "}
+                          ({selection.videoStartSec}–{selection.videoEndSec}s)
+                        </p>
+                      )}
                     </li>
                   ))}
                 </ol>
+                {consideredNotChosen.length > 0 && (
+                  <details className="mt-3 rounded-lg border px-3 py-2 text-sm">
+                    <summary className="cursor-pointer text-muted-foreground">
+                      עוד {consideredNotChosen.length} רגעים שנשקלו ולא נבחרו
+                    </summary>
+                    <ul className="mt-2 space-y-2">
+                      {consideredNotChosen.map((c, i) => (
+                        <li key={i} className="text-xs text-muted-foreground">
+                          <span className="font-mono">
+                            {c.filePath.split("/").pop()} · {c.startSec}–{c.endSec}s
+                          </span>
+                          {c.text && (
+                            <p dir="auto" className="mt-0.5">
+                              {c.text}
+                            </p>
+                          )}
+                          {c.visualSummary && (
+                            <p dir="auto" className="mt-0.5">
+                              👁 {c.visualSummary}
+                            </p>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {project.selectionShortlistJson && (
+                  <RefinementPanel
+                    projectId={project.id}
+                    currentSelections={currentSelections}
+                    fileNameByAssetId={fileNameByAssetId}
+                    draft={refinementDraft}
+                  />
+                )}
+
                 {selectionCheckpoint && (
                   <div className="pt-3">
                     {selectionCheckpoint.approved ? (
