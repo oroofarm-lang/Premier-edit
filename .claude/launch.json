@@ -22,7 +22,8 @@
         "-c",
         "export NVM_DIR=\"$HOME/.nvm\"; [ -s \"$NVM_DIR/nvm.sh\" ] && \\. \"$NVM_DIR/nvm.sh\"; cd \"/Users/ohadfait/Desktop/פרוייקטים/Premier edit/.worktrees/stage2-panel\" && npm run dev -- -p 3002"
       ],
-      "port": 3002
+      "port": 3002,
+      "autoPort": false
     }
   ]
 }
