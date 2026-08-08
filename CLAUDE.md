@@ -64,12 +64,14 @@ ingest → transcription
 
 ```bash
 npm run script:brief -- "<project>"                          # everything spoken, one file
+npm run script:score -- "<project>" [script.json ...]        # rank candidates, list unopened takes
 npm run script:apply -- "<project>" <script.json> [--check]  # validate, then persist
 ```
 
 - **A script line *is* a `Selection` row** — no new table, and the path inherits the approval checkpoint, picture-layer invalidation and the whole export chain unchanged.
 - **`validateScript` rule 3 is the one that matters.** Quoted text is compared against the transcript's own word timings, so a writer cannot put words in the speaker's mouth — the real voice plays over those frames. **Tell a writer to quote the mangled transcription**, not the corrected phrase: the audio is right even when the transcript is not.
 - **A line is one continuous, complete run of speech — default to whole sentences.** This file used to say word-level cutting "is the point"; that was wrong and the user rejected the result outright (*"המילים פשוט לא מתחברות"*). Fragmenting produced `הרכיב הראשון,` never naming the ingredient, and a line that was just `תמסוג`. **Fewer cuts is a feature** (*"פחות חיתוכים"*), merging adjacent segments into one long line is preferred, and **pauses are fine** (*"לא אכפת לי שיש רגעים של שקט"*) — never fragment to tighten. Cut mid-sentence only when you can name what it buys.
+- **`npm run script:score` before choosing between candidates** (`lib/script/score.ts`, free, pure). Five bands, each one a rejected defect; a lost point names the line. Two rules it encodes that are easy to get backwards: **a take is not a sentence** — runs split on a 4s gap, because the real 12.82s take holds a 3.14s pause and splitting there *is* the rejected cut — and **the hook is time to the first complete sentence, not the line length**, so taking a take whole costs nothing. It also lists unbroken takes nobody opened, which a writer reading a printed transcript structurally cannot see. **It ranks craft, never story choice** — v3 scores 96 and the user rejected it on content.
 - **Read any script aloud as one paragraph before trusting it.** The validator proves every word is real; only reading catches broken Hebrew at a join or a pronoun with no referent. `scripts/_read-cut.ts`-style concatenation is the check.
 - **Audio-only builds** (`placeAudioOnly`, checkbox on the pipeline screen, on by default) leave V1 empty deliberately — picture is the loudest thing in a sequence, so stripping it is the only way to hear whether the words hold up.
 
