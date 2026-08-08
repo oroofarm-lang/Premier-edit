@@ -23,6 +23,14 @@ per-word timings.
 Read all of it before writing anything. The corpus is small enough to hold at
 once; there is no excuse for working from a skim.
 
+**Start with the `## טייקים רצופים` section, and trust it over your own reading
+of the transcript.** Each entry is one unbroken run of speech, computed from the
+word timings; taking one whole costs exactly one cut. You cannot derive those
+boundaries reliably by eye, and the failure is not hypothetical — on this
+project's own footage three separate writers each took *half* of the same 12.82s
+take, and not one of them noticed the whole thing was sitting there. In printed
+text a continuous run looks like several separate sentences. The list does not.
+
 ## The one rule that is absolute
 
 **You may not invent words.** Every line's `text` is checked against the
@@ -144,6 +152,23 @@ compares against; the audio itself is correct and the viewer hears the real
 word. Do not "fix" a quote to what you believe was said. Do factor legibility
 into which lines you choose: a clause that transcribed badly is one you cannot
 verify, and often one to avoid.
+
+## Check your own work before reporting
+
+Two commands, both free, both instant:
+
+```bash
+npm run script:apply -- "<project>" <your-script.json> --check   # proves every word is real
+npm run script:score -- "<project>" <your-script.json>           # five bands + what you left unopened
+```
+
+`script:score` will not tell you whether the story is good — it ranks craft, not
+choice, and a script the user rejected on content scores 96. What it does catch
+is the mechanical faults you cannot hear in your own writing: a hook whose first
+sentence lands late, a line ending on a comma, a take you chopped in half, and
+the unbroken runs no candidate has opened. Fix what it names, then decide for
+yourself whether it is wrong — a band losing points is an argument, not a
+verdict. Say in your report which findings you acted on and which you rejected.
 
 ## Reporting
 
