@@ -17,7 +17,8 @@
     "coherence": "tsx scripts/coherence.ts",
     "script:brief": "tsx scripts/script-brief.ts",
     "script:apply": "tsx scripts/script-apply.ts",
-    "render:spine": "tsx scripts/render-spine.ts"
+    "render:spine": "tsx scripts/render-spine.ts",
+    "script:score": "tsx scripts/script-score.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
