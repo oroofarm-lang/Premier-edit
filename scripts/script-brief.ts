@@ -4,6 +4,7 @@ import path from "node:path";
 import { prisma } from "@/lib/db";
 import { assembleExpertSections } from "@/lib/experts";
 import { PROFILE_TARGET_SECONDS } from "@/lib/selection/types";
+import { findSpeechRuns, MIN_REPORTABLE_RUN_SEC } from "@/lib/script/score";
 import { parseSegments, toScriptSources } from "@/lib/script/sources";
 import { MIN_LINE_SEC } from "@/lib/script/validate";
 
@@ -100,8 +101,33 @@ async function main() {
   lines.push("");
   lines.push("**מה מותר:**");
   lines.push("- לסדר מחדש — השורה האחרונה בהקלטה יכולה להיות הראשונה בסרטון.");
-  lines.push("- לחתוך באמצע משפט. יש תזמון לכל מילה, אז אפשר לקחת חצי משפט בלבד.");
   lines.push("- לקחת מאותו קליפ כמה פעמים, כל עוד הקטעים לא חופפים.");
+  lines.push("");
+  lines.push("**הכלל שקובע יותר מכולם: שורה היא ריצה אחת רצופה ושלמה של דיבור.**");
+  lines.push("");
+  lines.push(
+    "הבריף הזה נהג לומר שחיתוך באמצע משפט \"הוא כל העניין\". זה היה **שגוי**, והמשתמש דחה את " +
+      "התוצאה במפורש: *\"המילים פשוט לא מתחברות\"*. הפיצול ייצר `הרכיב הראשון,` — רכיב שמוכרז " +
+      "ולעולם לא נקרא בשמו — ושורה שכולה `תמסוג`, שנתלשה מה-`יאללה` שלה.",
+  );
+  lines.push("");
+  lines.push("- **פחות חיתוכים זה יתרון.** אותן מילים בשורה אחת ארוכה עדיפות על אותן מילים מפוצלות.");
+  lines.push(
+    "- **הפסקות זה בסדר** — *\"לא אכפת לי שיש רגעים של שקט\"*. אל תפצל כדי להדק.",
+  );
+  lines.push(
+    "- **פסוקית שצריכה את ההקדמה שלה שומרת עליה.** `אבל פה זה צמח מדברי` לא יכולה לפתוח שורה — " +
+      "ה-`אבל` עונה ל-`כולנו יודעים ש…` שכבר לא נמצא שם.",
+  );
+  lines.push(
+    "- חתוך באמצע משפט רק כשאתה יכול לנסח מה זה קונה. יש תזמון לכל מילה, אז זה **אפשרי** — " +
+      "זה פשוט כמעט תמיד לא נכון.",
+  );
+  lines.push("");
+  lines.push(
+    "**קרא את התסריט בקול כפסקה אחת לפני שאתה מדווח.** הוולידטור מוכיח שכל מילה נאמרה באמת; " +
+      "רק קריאה תופסת עברית שבורה בתפר או כינוי גוף בלי מה שהוא מחליף.",
+  );
   lines.push("");
   lines.push("**מה אסור, ונדחה אוטומטית:**");
   lines.push(
@@ -147,6 +173,47 @@ async function main() {
     lines.push("## ידע מקצועי לפרופיל הזה");
     lines.push("");
     lines.push(experts);
+    lines.push("");
+  }
+
+  // The takes, before the transcript. This section exists because reading a
+  // printed transcript makes an unbroken take look like several sentences —
+  // and on this project's own footage three separate writers each took half of
+  // the same 12.82s run without any of them reporting that the whole thing was
+  // there. Arithmetic sees it; prose does not. Putting it first is the point:
+  // the failure was never a lack of care, it was a lack of visibility.
+  const takesByAsset = new Map(
+    sources.map((s) => [s.mediaAssetId, findSpeechRuns(s)]),
+  );
+  const longTakes = [...takesByAsset.values()]
+    .flat()
+    .filter((r) => r.durationSec >= MIN_REPORTABLE_RUN_SEC)
+    .sort((a, b) => b.durationSec - a.durationSec);
+
+  if (longTakes.length > 0) {
+    lines.push("---");
+    lines.push("");
+    lines.push("## טייקים רצופים — קרא את זה לפני התמלול המלא");
+    lines.push("");
+    lines.push(
+      `כל אחד מאלה הוא **ריצה אחת בלי הפסקה ארוכה מ-4 שניות**. לקחת אחד מהם בשלמותו ` +
+        `עולה **חיתוך אחד** — וזו בדיוק הצורה שהכלל למעלה מבקש.`,
+    );
+    lines.push("");
+    lines.push(
+      "אל תסיק את הגבולות האלה מהתמלול שלמטה. בטקסט מודפס ריצה רצופה נראית כמו כמה " +
+        "משפטים נפרדים, ובדיוק ככה שלושה כותבים שונים לקחו כל אחד חצי מאותו טייק של " +
+        "12.82 שניות בלי שאף אחד מהם ראה שהוא קיים במלואו.",
+    );
+    lines.push("");
+
+    for (const take of longTakes) {
+      lines.push(
+        `- **${take.fileName}  ${formatSeconds(take.startSec)}–${formatSeconds(take.endSec)}s** ` +
+          `(${formatSeconds(take.durationSec)}s) — \`${take.mediaAssetId}\``,
+      );
+      lines.push(`  > ${take.text}`);
+    }
     lines.push("");
   }
 
