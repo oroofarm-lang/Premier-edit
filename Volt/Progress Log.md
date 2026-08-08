@@ -36,6 +36,12 @@ E is deliberately **v3 with the same material and the same 31.53s**, minus the s
 
 220 tests (was 194), tsc clean.
 
+**Then the tool was pointed at the pipeline that produces its inputs, and found the actual cause.** `scripts/script-brief.ts` — the file handed to every writer — still contained the line *"לחתוך באמצע משפט. יש תזמון לכל מילה, אז אפשר לקחת חצי משפט בלבד."* [[CLAUDE]] and the `script-writer` agent were both corrected on 2026-08-07; **the brief was not**, so the premise the user rejected in the strongest terms was still being taught to the next writer on the way in. A grep across `.claude/agents/`, `lib/experts/` and `docs/` confirmed this was the only surviving instance — every other mention argues *against* mid-sentence cutting.
+
+The lesson generalises past this one file: **a rule was corrected in the two places that were easy to remember and missed the one that actually reaches the agent.** When a premise is inverted, grep for it rather than correcting from memory.
+
+**The structural half is a new `## טייקים רצופים` section at the top of the brief.** Every unbroken run of 5s or more, longest first, with its text and asset id. The failure was never a lack of care — in printed text a continuous run *looks like several separate sentences*, so no amount of careful reading recovers it. Computed from word timings it is one line in a list. On the tea corpus it prints five takes, and the 12.82s ceremony is now the fourth entry rather than something to be inferred. The writer agent is told to trust that list over its own reading; both agents now check their work with `script:score`, and the critic is told to run it **after** forming its own view and to report disagreement with it rather than deferring.
+
 ## 2026-08-08 — State audit: a fourth script had been written and never logged
 
 No feature work. A fresh session asked what context it had, and the audit found one real gap and one recurrence.

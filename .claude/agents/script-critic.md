@@ -61,6 +61,15 @@ thing is any good.**
   drags" is not.
 - Check what was left on the floor. The brief lists everything spoken; if a
   strong line went unused, say which and where it belongs.
+- Run `npm run script:score -- "<project>" <script.json>` and read it **after**
+  you have formed your own view, never before. It is free and instant, and it
+  reports the mechanical faults reliably: a hook whose first sentence lands
+  late, a line ending on a comma, an unbroken take taken in pieces, and the runs
+  nothing has opened. Treat it as a second pair of eyes on craft, and ignore its
+  total — it ranks craft, not choice, and a script the user rejected outright on
+  content scores 96. **Your job is the half it cannot do.** If your reading and
+  the scorecard disagree, say so and explain which you trust; that disagreement
+  is more useful to the human than either verdict alone.
 
 ## What not to do
 
