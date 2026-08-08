@@ -25,7 +25,9 @@ Older entries: [[Progress Log 2026-07]] (scaffold through 2026-07-31).
 2. **Two lint errors blocked `npm run build`** — a `prefer-const` in `lib/craft/plan.ts` and an unused `ScriptSource` import in `lib/script/validate.ts`. Both fixed. They had survived because **`main` had no code to build**, so nothing had ever run the build there; `tsc --noEmit` passes on both, and it is `next lint` inside `next build` that catches them.
 3. `node_modules` on `main` predated the code entirely — `vitest: command not found`. `npm install` + `npx prisma generate`.
 
-**Verified on `main` itself, not on the branch it came from:** 220 tests, `tsc` clean, `next build` succeeds, `panel:sim` 20/20. Undo point recorded before starting: `132eb94`.
+**Verified on `main` itself, not on the branch it came from:** 220 tests, `tsc` clean, `next build` succeeds, `panel:sim` 20/20. Undo point recorded before starting: `132eb94`. Afterwards `stage2-panel` was fast-forwarded to the merge commit, so both branches sit on `aa15320` and cannot silently drift apart again.
+
+**The merge moved the code and left the data behind, which is its own lesson.** Everything gitignored is per-worktree, so `main` inherited none of it: its `prisma/dev.db` was a **180KB relic from 2026-07-30** whose schema predates `Project.selectionPremise`, and `scripts-out/` did not exist there at all. Merging a branch does not merge the work — `npm run script:score` compiled, typechecked and then failed at runtime on a missing column. The 434KB working database and all eight candidate scripts were copied across (the stale one kept as `prisma/dev.db.pre-merge-backup-20260808`, nothing deleted), `prisma migrate status` reports the schema current, and the scorecard now runs from `main` against the real project. Also needed: `npm install` and `npx prisma generate`, because `main`'s `node_modules` predated the existence of any code to run.
 
 **Left undecided deliberately:** whether new code now goes to `main` directly or keeps using `stage2-panel`. The worktree still exists and still works. `CLAUDE.md` rule 3 records the question rather than inventing an answer.
 
