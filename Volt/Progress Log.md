@@ -13,6 +13,16 @@ Part of [[Premier Edit]]. Newest entry on top.
 
 Older entries: [[Progress Log 2026-07]] (scaffold through 2026-07-31).
 
+## 2026-08-08 — State audit: a fourth script had been written and never logged
+
+No feature work. A fresh session asked what context it had, and the audit found one real gap and one recurrence.
+
+**The gap: `script-d.json` existed on disk and appeared nowhere in the vault.** It was written at 15:09 yesterday, one minute after the entry below was saved, so it fell outside the round it belongs to — the log was accurate at the moment it was written and stale a minute later. Now recorded in that entry. Worth generalising: **an artifact written after the log entry is invisible to the log, and `scripts-out/` is gitignored, so nothing else would have caught it.** Diffing `scripts-out/` mtimes against the newest log heading is the cheap check.
+
+**The recurrence: the empty Obsidian stubs came back.** `Untitled.md`, `Untitled.canvas`, `Untitled 1.canvas`, `Untitled.base` and a 0-byte `2026-08-07.md` — the same family deleted on 2026-08-07, recreated by Obsidian itself. Deleting them again is treating the symptom; they are untracked noise in `git status` that makes a real change harder to see. If they return a third time, the fix is a `.gitignore` rule, not another deletion.
+
+**Everything else is clean.** Both worktrees have no uncommitted changes, `main` is at `107113a` and `stage2-panel` at `bbbd8e6`, and the ~176-file gap between them (task #27) is unchanged and still the largest open structural item.
+
 ## 2026-08-07 — Three directions, and a continuous run nobody saw whole
 
 The user accepted v3's craft and rejected its *choice*: *"החיתוכים טובים יותר, הבניית הסיפור היא טובה, חוץ מהתוכן בפנים שאני פחות אהבתי… אם היינו בוחרים ללכת על הסיפור הזה, אז זה בסדר גמור."* That is not a quality complaint, it is a **choice** complaint — and it means the story should come from the content agents, not from me. *"אנחנו צריכים לעבוד עם הסוכנים שלנו של התוכן."*
@@ -32,6 +42,10 @@ On C it refused the ending outright, and the reasoning is worth keeping: the bri
 Also flagged as unused by all three: `הרכיב הראשון, מרווה` (`0X7A1692`, 2.42s) — the cleanest short concrete line in the corpus, and the direct repair of the `הרכיב הראשון,` failure already recorded here.
 
 **Tooling that came out of this round:** `npm run render:spine -- "<project>" --script <file>` renders a candidate straight from its JSON. Until now, auditioning an option meant *applying* it — a database write that also cleared the picture layer — to listen to something that might be rejected. Choosing between stories is the user's call, so hearing three of them must not cost three writes.
+
+**Then a fourth, and it is not recorded above because it was written minutes after this entry was.** `script-d.json` (15:09) is **B revised against the critic's three notes**, rendered to a spine at 15:10. 4 lines, 3 cuts. It fixes each objection in the place the objection was made: the 9.28s opening is replaced by `נמרוד, בא לך על כוס תה?` (1.04–2.98, **1.94s** — inside the brief's hard 3s rule, a question rather than an announcement); the count-corrupting `וזה אלוויזה` is dropped so `זה הרכב השני` follows the מרווה the previous line went to pick, leaving the arithmetic true; and the close is the **7.74s continuous run 6.12–13.86** — the full list, the pour, and `בא לך? ברור` echoing the opening question with the tea now in the cup. It keeps B's 3.3s stall inside `ונלך` deliberately, on the user's own rule that pauses are fine and that it is no longer the first thing heard.
+
+Note what D does *not* do: it splits the 1.04–13.86 run rather than using it whole, taking the hook off its front and the ceremony off its back and putting the counting between them. That is a defensible trade — the count is what the middle is for — but it means the 12.8s single-cut version identified above has still never been built or heard. **No verdict from the user is recorded for D.**
 
 ## 2026-08-07 — "המילים פשוט לא מתחברות": word-level cutting was the wrong default
 
