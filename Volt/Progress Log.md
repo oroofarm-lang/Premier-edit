@@ -13,6 +13,29 @@ Part of [[Premier Edit]]. Newest entry on top.
 
 Older entries: [[Progress Log 2026-07]] (scaffold through 2026-07-31).
 
+## 2026-08-08 — A scorecard for a script, and the take that was there the whole time
+
+Asked to look at what the competitors ship and bring it in. The category's headline feature is a **virality score**: Opus Clip gives every clip a 0–99 built from hook strength, flow, perceived value and trend alignment. The consistent finding in published tests is that it is a black box — clips scored 40 outperform clips scored 85, and nothing tells you why either number happened. Vizard's differentiator is a **transcript-based editor** (highlight the words, get the clip), and TimeBolt's is that it **cuts by waveform first**, not by transcript — which is the lesson [[Progress Log#2026-08-07 — The silence the transcript could not report|this project learned the hard way]] two days ago, independently.
+
+So the thing worth copying was the *idea* of scoring a candidate before committing to it, on the opposite trade: **fewer signals, all measurable, each one a defect we actually shipped and the user actually rejected.** `lib/script/score.ts` + `npm run script:score`. Five bands — hook, wholeness, pace, closure, breadth — and a lost point names the line to fix. Free: arithmetic over word timings already in the database.
+
+**The band that earns its place is the corpus one.** Reading a printed transcript makes an unbroken take look like several sentences, which is exactly why three separate writers each took half of the 12.8s run in `0X7A1694` and none of them reported the whole thing existed. Word-timing arithmetic sees it instantly. On the real project it also surfaced **42 seconds of unbroken speech across two clips that no candidate has ever opened** — `0X7A1667` 3.68–32.84s (a completely different 29s opening: *"היום אנחנו נמצאים במחלקת צמחים מרפא…"*) and `0X7A1693` 17.48–30.44s.
+
+**Two modelling errors, both caught by a failing test rather than by review.**
+
+1. **A take is not a sentence.** The first cut split runs on a 0.5s gap. That splits the real 1.04–13.86 take at its 3.14s pause — *precisely the split every writer made and the user rejected*. The unit had to be a **take** (4s), on the user's own rule that pauses are fine. A sentence-sized threshold would have made the tool recommend the failure it exists to find.
+2. **Ranking opportunities by raw gap width** hands back whichever gap holds the longest *silence*. Ranked on speech content now, and reported snapped onto real words.
+
+**Building the payoff exposed a third, in the scorer's own design.** The hook band measured the *line* length, so a script taking the 12.82s take whole scored **0 on hook** — the tool would have punished the one thing the rule asks for. Fixed to measure **time to the first complete sentence**: that take opens on `נמרוד, בא לך על כוס תה?` and resolves it at **1.94s**. The viewer is hooked before the second second, whatever happens for the remaining eleven. Where the cut lands and where the viewer is caught are different questions, and only the second one is the hook.
+
+**Then the script the finding points at, `script-e`.** Line 0 is the full 12.82s run in one cut: הזמנה → הסכמה → *the viewer's own question* → the name of the tea → the four plants → מזיגה → `בא לך? ברור` echoing the opening. Every earlier candidate lost part of it — and **`script-d`, the best-scoring one, drops 2.98–6.12s**, which is where `ברור, מה יש בתה? זה תה של וד עתיר` lives. D deletes the acceptance, the viewer's question *and* the name of the tea.
+
+E is deliberately **v3 with the same material and the same 31.53s**, minus the split: v3 cut that take at 11.58s and inserted the exposition into the hole. Validated first pass, zero warnings, 3 lines / 2 cuts, no silence at or below −30dB. Rendered to `script-e-spine.wav`. **Judgement pending — the ear decides.**
+
+**The honest limitation, and it is the important one.** `v3` scores **96**, tied for top — and v3 is the candidate the user rejected outright on content (*"חוץ מהתוכן בפנים שאני פחות אהבתי"*). The scorecard ranks **craft, never choice**. E scores 86 and loses all 10 closure points legitimately: its loop closes inside line 0 and it ends in the field, not on the cup. That number was left alone rather than tuned until E won, which is the entire difference between this and the black box it was modelled on.
+
+220 tests (was 194), tsc clean.
+
 ## 2026-08-08 — State audit: a fourth script had been written and never logged
 
 No feature work. A fresh session asked what context it had, and the audit found one real gap and one recurrence.
