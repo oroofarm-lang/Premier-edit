@@ -13,6 +13,22 @@ Part of [[Premier Edit]]. Newest entry on top.
 
 Older entries: [[Progress Log 2026-07]] (scaffold through 2026-07-31).
 
+## 2026-08-08 — Task #27: the branches are one again, and the merge found three things
+
+`main` had carried only the vault, the agents and `CLAUDE.md` for a week while every line of working code lived on `stage2-panel`. **83 commits and ~17.7k lines merged in**; `main`'s own 60 commits stayed. Open since 2026-08-01.
+
+**The scary number was wrong.** "~176 files behind" described the *diff*, not the difficulty — **only two files actually conflicted**, `.gitignore` and `.claude/launch.json`, both config, both resolved as the **union** of what each branch added (main's Premiere auto-save rules + stage2's `public/_panel` and `scripts-out/`; all three launch configurations kept). `CLAUDE.md` did not conflict at all, because it had been synced byte-identical earlier the same day. A merge deferred for a week on the strength of a file count was a merge nobody had measured.
+
+**Three defects surfaced, none caused by the merge — all of them were already true and simply had nowhere to show.**
+
+1. **vitest was walking into `.worktrees/`.** It ran a second copy of every test *under a different branch's source*, reported **449 tests where there are 220**, and failed on whatever `editing-quality` had left half-finished (`@/lib/editing/social-guidelines`, a module that only exists on that branch). A green run here would have been reporting on the wrong code. `test.exclude` now covers `**/.worktrees/**`.
+2. **Two lint errors blocked `npm run build`** — a `prefer-const` in `lib/craft/plan.ts` and an unused `ScriptSource` import in `lib/script/validate.ts`. Both fixed. They had survived because **`main` had no code to build**, so nothing had ever run the build there; `tsc --noEmit` passes on both, and it is `next lint` inside `next build` that catches them.
+3. `node_modules` on `main` predated the code entirely — `vitest: command not found`. `npm install` + `npx prisma generate`.
+
+**Verified on `main` itself, not on the branch it came from:** 220 tests, `tsc` clean, `next build` succeeds, `panel:sim` 20/20. Undo point recorded before starting: `132eb94`.
+
+**Left undecided deliberately:** whether new code now goes to `main` directly or keeps using `stage2-panel`. The worktree still exists and still works. `CLAUDE.md` rule 3 records the question rather than inventing an answer.
+
 ## 2026-08-08 — A scorecard for a script, and the take that was there the whole time
 
 Asked to look at what the competitors ship and bring it in. The category's headline feature is a **virality score**: Opus Clip gives every clip a 0–99 built from hook strength, flow, perceived value and trend alignment. The consistent finding in published tests is that it is a black box — clips scored 40 outperform clips scored 85, and nothing tells you why either number happened. Vizard's differentiator is a **transcript-based editor** (highlight the words, get the clip), and TimeBolt's is that it **cuts by waveform first**, not by transcript — which is the lesson [[Progress Log#2026-08-07 — The silence the transcript could not report|this project learned the hard way]] two days ago, independently.
